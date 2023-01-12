@@ -2,13 +2,13 @@
 Paper reproduction for FACT-AI course at UvA.
 
 
-The code associated with the paper contains a fork of the original implementation of Deepwalk on the github (https://github.com/phanein/deepwalk/) of an author of the original paper on Deepwalk (https://arxiv.org/abs/1403.6652). The fork is messy and it is not yet clear that is necessary, so here is how you can use the original version based on the original README.rst and experimentation with different versions of the packages. We chose to find a working combination of old packages instead of trying to make the code compatible with the newest versions of the modules.
+The code associated with the paper (https://github.com/ahmadkhajehnejad/CrossWalk) contains a fork of the original implementation of Deepwalk on the github (https://github.com/phanein/deepwalk/) by an author of the original paper on Deepwalk (https://arxiv.org/abs/1403.6652). The fork is messy, it doesn't work out of the box and it is not yet clear that is necessary, so one may want to use the original implementation instead. That code does however not have correctly documented instructions on which versions of python and packages to use, so here are brief instructions for getting it work based on the original README.rst and experimentation with different versions of the packages. We chose to find a working combination of old packages instead of trying to make the code compatible with the newest versions of the modules.
 
 clone https://github.com/phanein/deepwalk.git and go to the dir
 
 $conda create -n dpwalk python=3.6
 
-$conda activate dwalk
+$conda activate dpwalk
 
 change requirements.txt to: 
 wheel>=0.23.0
