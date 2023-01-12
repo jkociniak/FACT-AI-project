@@ -1,4 +1,6 @@
 from graph import Graph
+import networkx as nx
+import karateclub
 from data import *
 
 
@@ -7,13 +9,25 @@ def load_data():
     Loads data
     """
 
-    data = load_syn_data()
+    with open("./data/synthetic_n500_Pred0.7_Phom0.025_Phet0.001.attr") as f:
+
+        nodes = f.read()
+
+    with open("./data/synthetic_n500_Pred0.7_Phom0.025_Phet0.001.links") as f:
+
+        links = f.read()
+
+    data = {
+        "nodes": nodes,
+        "links": links
+    }
 
     return data
 
 
 def make_graph(data) -> Graph:
 
+    nx.DiGraph(data["links"])
     graph = None
     return graph
 
