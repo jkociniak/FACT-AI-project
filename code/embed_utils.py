@@ -112,7 +112,7 @@ def save_embed(
         method=method,
         implementation=implementation,
     )
-    path = f"./embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
+    path = f"../embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
     np.save(path, embed, allow_pickle=False)
 
 
@@ -126,7 +126,7 @@ def load_embed(dataset: str, task: str, method: str, implementation: str):
         method=method,
         implementation=implementation,
     )
-    path = f"./embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
+    path = f"../embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
     if implementation == "perozzi" or implementation == "singer":
         # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
         # which messes up the (re-)indexing
