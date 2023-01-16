@@ -30,9 +30,9 @@ def check_input_formatting(**kwargs):
             "deepwalk"
         ], "method should be 'deepwalk' (for now)"
     if "implementation" in kwargs:
-        assert kwargs["implementation"] in [
+        assert kwargs["implementation", "singer"] in [
             "karateclub"
-        ], "implementation should be 'karateclub'             (for now)"
+        ], "implementation should be 'karateclub' or 'singer' (for now)"
 
 
 def raw_to_graph_format(attr_str, links_str):
@@ -127,7 +127,7 @@ def load_embed(dataset: str, task: str, method: str, implementation: str):
         implementation=implementation,
     )
     path = f"./embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
-    if implementation == "perozzi":
+    if implementation == "perozzi" or implementation == "singer":
         # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
         # which messes up the (re-)indexing
         path += ".embeddings"
