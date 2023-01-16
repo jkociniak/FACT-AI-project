@@ -55,9 +55,10 @@ zlib                      1.2.13               h5eee18b_0
 
 $python setup.py install
 
+FILE PATH NAMING CONVENTIONS MAY STILL CHANGE. CROSS CHECK WITH THE CURRENT VERSION OF OUR CODE
 In general:
 $deepwalk --input {INPUT_PATH(.links)} --format edgelist --output {OUTPUT(.embeddings)}
 
 For example for the second synthetic dataset (note that the file path may have changed when you read this):
-$deepwalk --input ../data/synthetic_n500_Pred0.7_Phom0.025_Phet0.001.links --format edgelist --output synth2.embeddings
-You should now have a file 'synth2.embeddings' in the dir
+$deepwalk --input ../data/synthetic_n500_Pred0.7_Phom0.025_Phet0.001.links --format edgelist --output synth2_deepwalk_perozzi.embeddings
+You should now have a file 'synth2_deepwalk_perozzi.embeddings' in the dir

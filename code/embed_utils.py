@@ -3,9 +3,10 @@ import networkx as nx
 from karateclub import DeepWalk
 
 
-def data2graph(files_path):
+def data2graph(files_path: str, attribute_name: str):
+    # TODO Datasets may have more than one attribute
     with open(files_path + ".attr") as f:
-        attr = [(int(i)-1, {"class": int(c)}) for node in f.read().strip().split('\n') for i, c in [node.split()]]
+        attr = [(int(i)-1, {attribute_name: int(c)}) for node in f.read().strip().split('\n') for i, c in [node.split()]]
     with open(files_path + ".links") as f:
         links = [(int(i0)-1, int(i1)-1) for edge in f.read().strip().split('\n') for i0, i1 in [edge.split()]]
     
@@ -21,6 +22,8 @@ def graph2embed(graph, method="karateclub"):
         model.fit(graph)
         embed = model.get_embedding()
         return embed
+    else:
+        raise Exception("Unknown method. Try 'karateclub'.")
 
 
 def save_embed(embed: np.array, dataset: str, method: str, implementation: str):
@@ -39,10 +42,13 @@ def load_embed(dataset: str, method: str, implementation: str):
     """
     path = f"embeddings/{dataset}/{dataset}_{method}_{implementation}"
     if implementation=="perozzi":
-        embed = np.genfromtxt(path + ".embeddings", dtype=np.single, skip_header=1, usecols=np.arange(1,65))
-        indices = np.genfromtxt(path + ".embeddings", dtype=np.uintc, skip_header=1, usecols=[0])
+        # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
+        path += ".embeddings"
+        embed = np.genfromtxt(path, dtype=np.single, skip_header=1, usecols=np.arange(1,65))
+        indices = np.genfromtxt(path, dtype=np.uintc, skip_header=1, usecols=[0])
         # sort the embeddings
         embed = embed[indices]
     else:
         embed = np.load(path + ".npy", allow_pickle=False)
+
     return embed
