@@ -5,11 +5,31 @@ import networkx as nx
 from karateclub import DeepWalk
 
 
-def raw_to_graph_format(attr, links):
+def check_input_formatting(**kwargs):
+    """
+    Check that the input strings follow the correct naming conventions
+    """
+    if "dataset" in kwargs:
+        assert kwargs["dataset"] in ["rice", "synth_3layers", "synth2", "synth3", "twitter"], "\
+            dataset should be either 'rice', 'synth_3layers', 'synth2', 'synth3' or 'twitter'"
+    if "task" in kwargs:
+        assert kwargs["task"] in ["LP", "IM", "NC"], "task should be either 'LP' (Link Prediction),\
+            'IM' (Influence Maximization) or 'NC' (Node Classification)"
+    if "method" in kwargs:
+        assert kwargs["method"] in ["deepwalk"], "method should be 'deepwalk' (for now)"
+    if "implementation" in kwargs:
+        assert kwargs["implementation"]in ["karateclub"], "implementation should be 'karateclub' \
+            (for now)"
+
+
+def raw_to_graph_format(attr_str, links_str):
+    # list of tuples
+    attr = [(int(i), int(c)) for node in attr_str.strip().split('\n') for i, c in [node.split()]]
+    links = [(int(i1), int(i2)) for node in links_str.strip().split('\n') for i1, i2 in [node.split()]]
     
     # Make the mapping
     mapping = {}
-    new_node = 1
+    new_node = 0
     for node, label in attr:
         if node not in mapping.keys():
             mapping[node] = new_node
@@ -31,35 +51,16 @@ def raw_to_graph_format(attr, links):
     return attr_oac, links_oac
 
 
-def check_input_formatting(**kwargs):
-    """
-    Check that the input strings follow the correct naming conventions
-    """
-    if "dataset" in kwargs:
-        assert kwargs["dataset"] in ["rice", "synth_3layers", "synth2", "synth3", "twitter"], "\
-            dataset should be either 'rice', 'synth_3layers', 'synth2', 'synth3' or 'twitter'"
-    if "task" in kwargs:
-        assert kwargs["task"] in ["LP", "IM", "NC"], "task should be either 'LP' (Link Prediction),\
-            'IM' (Influence Maximization) or 'NC' (Node Classification)"
-    if "method" in kwargs:
-        assert kwargs["method"] in ["deepwalk"], "method should be 'deepwalk' (for now)"
-    if "implementation" in kwargs:
-        assert kwargs["implementation"]in ["karateclub"], "implementation should be 'karateclub' \
-            (for now)"
-
-
-def data2graph(dataset: str, attribute_name: str):
+def data2graph(dataset: str):
     check_input_formatting(dataset=dataset)
     path = f"../data/{dataset}/"
     path += splitext(listdir(path)[0])[0]
     # TODO hardcode coupling attribute_name to the respective dataset within this function
         # but maybe we can all give them the same name?
     # TODO? Datasets may have more than one attribute (or is that case not relevant here?)
-    with open(path + ".attr") as f:
-        attr = [(int(i)-1, {attribute_name: int(c)}) for node in f.read().strip().split('\n') for i, c in [node.split()]]
-    with open(path + ".links") as f:
-        links = [(int(i0)-1, int(i1)-1) for edge in f.read().strip().split('\n') for i0, i1 in [edge.split()]]
-    
+    with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
+        attr, links = raw_to_graph_format(f_attr.read(), f_links.read())
+
     G = nx.Graph()
     G.add_nodes_from(attr)
     G.add_edges_from(links)
