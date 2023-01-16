@@ -1,13 +1,17 @@
 import numpy as np
+from os import listdir
+from os.path import splitext
 import networkx as nx
 from karateclub import DeepWalk
 
 
-def data2graph(files_path: str, attribute_name: str):
-    # TODO Datasets may have more than one attribute
-    with open(files_path + ".attr") as f:
+def data2graph(dataset: str, attribute_name: str):
+    path = f"../data/{dataset}/"
+    path += splitext(listdir(path)[0])[0]
+    # TODO? Datasets may have more than one attribute (or is that case not relevant here?)
+    with open(path + ".attr") as f:
         attr = [(int(i)-1, {attribute_name: int(c)}) for node in f.read().strip().split('\n') for i, c in [node.split()]]
-    with open(files_path + ".links") as f:
+    with open(path + ".links") as f:
         links = [(int(i0)-1, int(i1)-1) for edge in f.read().strip().split('\n') for i0, i1 in [edge.split()]]
     
     G = nx.Graph()
