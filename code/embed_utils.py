@@ -17,7 +17,7 @@ def check_input_formatting(**kwargs):
             "synth3",
             "twitter",
         ], (
-            "            dataset should be either 'rice', 'synth_3layers',"
+            "dataset should be either 'rice', 'synth_3layers',"
             " 'synth2', 'synth3' or 'twitter'"
         )
     if "task" in kwargs:
@@ -27,8 +27,8 @@ def check_input_formatting(**kwargs):
         )
     if "method" in kwargs:
         assert kwargs["method"] in [
-            "deepwalk"
-        ], "method should be 'deepwalk' (for now)"
+            "deepwalk", "fairwalk"
+        ], "method should be 'deepwalk' or 'fairwalk' (for now)"
     if "implementation" in kwargs:
         assert kwargs["implementation", "singer"] in [
             "karateclub"
