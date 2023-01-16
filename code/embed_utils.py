@@ -6,7 +6,7 @@ from karateclub import DeepWalk
 
 
 def raw_to_graph_format(attr, links):
-    
+
     # Make the mapping
     mapping = {}
     new_node = 1
@@ -16,18 +16,18 @@ def raw_to_graph_format(attr, links):
             new_node += 1
         else:
             raise ValueError("Duplicate node in attr data")
-            
+
     # Map to ordered and complete
     # Attr
-    attr_oac = [] 
+    attr_oac = []
     for node, label in attr:
         attr_oac.append((mapping[node], {"class": label}))
-        
+
     # Links
-    links_oac = [] 
+    links_oac = []
     for node1, node2 in links:
         links_oac.append((mapping[node1], mapping[node2]))
-    
+
     return attr_oac, links_oac
 
 
@@ -36,16 +36,29 @@ def check_input_formatting(**kwargs):
     Check that the input strings follow the correct naming conventions
     """
     if "dataset" in kwargs:
-        assert kwargs["dataset"] in ["rice", "synth_3layers", "synth2", "synth3", "twitter"], "\
-            dataset should be either 'rice', 'synth_3layers', 'synth2', 'synth3' or 'twitter'"
+        assert kwargs["dataset"] in [
+            "rice",
+            "synth_3layers",
+            "synth2",
+            "synth3",
+            "twitter",
+        ], (
+            "            dataset should be either 'rice', 'synth_3layers',"
+            " 'synth2', 'synth3' or 'twitter'"
+        )
     if "task" in kwargs:
-        assert kwargs["task"] in ["LP", "IM", "NC"], "task should be either 'LP' (Link Prediction),\
-            'IM' (Influence Maximization) or 'NC' (Node Classification)"
+        assert kwargs["task"] in ["LP", "IM", "NC"], (
+            "task should be either 'LP' (Link Prediction),            'IM'"
+            " (Influence Maximization) or 'NC' (Node Classification)"
+        )
     if "method" in kwargs:
-        assert kwargs["method"] in ["deepwalk"], "method should be 'deepwalk' (for now)"
+        assert kwargs["method"] in [
+            "deepwalk"
+        ], "method should be 'deepwalk' (for now)"
     if "implementation" in kwargs:
-        assert kwargs["implementation"]in ["karateclub"], "implementation should be 'karateclub' \
-            (for now)"
+        assert kwargs["implementation"] in [
+            "karateclub"
+        ], "implementation should be 'karateclub'             (for now)"
 
 
 def data2graph(dataset: str, attribute_name: str):
@@ -53,13 +66,21 @@ def data2graph(dataset: str, attribute_name: str):
     path = f"../data/{dataset}/"
     path += splitext(listdir(path)[0])[0]
     # TODO hardcode coupling attribute_name to the respective dataset within this function
-        # but maybe we can all give them the same name?
+    # but maybe we can all give them the same name?
     # TODO? Datasets may have more than one attribute (or is that case not relevant here?)
     with open(path + ".attr") as f:
-        attr = [(int(i)-1, {attribute_name: int(c)}) for node in f.read().strip().split('\n') for i, c in [node.split()]]
+        attr = [
+            (int(i) - 1, {attribute_name: int(c)})
+            for node in f.read().strip().split("\n")
+            for i, c in [node.split()]
+        ]
     with open(path + ".links") as f:
-        links = [(int(i0)-1, int(i1)-1) for edge in f.read().strip().split('\n') for i0, i1 in [edge.split()]]
-    
+        links = [
+            (int(i0) - 1, int(i1) - 1)
+            for edge in f.read().strip().split("\n")
+            for i0, i1 in [edge.split()]
+        ]
+
     G = nx.Graph()
     G.add_nodes_from(attr)
     G.add_edges_from(links)
@@ -76,29 +97,45 @@ def graph2embed(graph, method="deepwalk", implementation="karateclub"):
     return embed
 
 
-def save_embed(embed: np.array, task:str, dataset: str, method: str, implementation: str):
-    """"
-    Saves an embedding to the appropriate directionary and file. 
+def save_embed(
+    embed: np.array, task: str, dataset: str, method: str, implementation: str
+):
+    """ "
+    Saves an embedding to the appropriate directionary and file.
     TODO Maybe hyperparameter info like the number of embedding dimensions should be added
-    For now without pickle for possible compatability issues. 
+    For now without pickle for possible compatability issues.
     """
-    check_input_formatting(dataset=dataset, task=task, method=method, implementation=implementation)
+    check_input_formatting(
+        dataset=dataset,
+        task=task,
+        method=method,
+        implementation=implementation,
+    )
     path = f"./embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
     np.save(path, embed, allow_pickle=False)
 
 
 def load_embed(dataset: str, task: str, method: str, implementation: str):
-    """"
-    load an embedding. 
+    """ "
+    load an embedding.
     """
-    check_input_formatting(dataset=dataset, task=task, method=method, implementation=implementation)
+    check_input_formatting(
+        dataset=dataset,
+        task=task,
+        method=method,
+        implementation=implementation,
+    )
     path = f"./embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
-    if implementation=="perozzi":
+    if implementation == "perozzi":
         # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
         # which messes up the (re-)indexing
         path += ".embeddings"
-        embed = np.genfromtxt(path, dtype=np.single, skip_header=1, usecols=np.arange(1,65))
-        indices = np.genfromtxt(path, dtype=np.uintc, skip_header=1, usecols=[0])
+        embed = np.genfromtxt(
+            path, dtype=np.single, skip_header=1, usecols=np.arange(1, 65)
+        )
+        indices = np.genfromtxt(
+            path, dtype=np.uintc, skip_header=1, usecols=[0]
+        )
         # sort the embeddings
         embed = embed[indices]
     else:
