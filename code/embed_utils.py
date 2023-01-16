@@ -5,6 +5,32 @@ import networkx as nx
 from karateclub import DeepWalk
 
 
+def raw_to_graph_format(attr, links):
+    
+    # Make the mapping
+    mapping = {}
+    new_node = 1
+    for node, label in attr:
+        if node not in mapping.keys():
+            mapping[node] = new_node
+            new_node += 1
+        else:
+            raise ValueError("Duplicate node in attr data")
+            
+    # Map to ordered and complete
+    # Attr
+    attr_oac = [] 
+    for node, label in attr:
+        attr_oac.append((mapping[node], {"class": label}))
+        
+    # Links
+    links_oac = [] 
+    for node1, node2 in links:
+        links_oac.append((mapping[node1], mapping[node2]))
+    
+    return attr_oac, links_oac
+
+
 def check_input_formatting(**kwargs):
     """
     Check that the input strings follow the correct naming conventions
@@ -61,7 +87,7 @@ def save_embed(embed: np.array, task:str, dataset: str, method: str, implementat
     np.save(path, embed, allow_pickle=False)
 
 
-def load_embed(dataset: str, task:str, method: str, implementation: str):
+def load_embed(dataset: str, task: str, method: str, implementation: str):
     """"
     load an embedding. 
     """
