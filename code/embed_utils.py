@@ -30,8 +30,8 @@ def check_input_formatting(**kwargs):
             "deepwalk", "fairwalk"
         ], "method should be 'deepwalk' or 'fairwalk' (for now)"
     if "implementation" in kwargs:
-        assert kwargs["implementation", "singer"] in [
-            "karateclub"
+        assert kwargs["implementation"] in [
+            "karateclub", "singer"
         ], "implementation should be 'karateclub' or 'singer' (for now)"
 
 
