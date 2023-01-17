@@ -20,11 +20,6 @@ def check_input_formatting(**kwargs):
             "dataset should be either 'rice', 'synth_3layers',"
             " 'synth2', 'synth3' or 'twitter'"
         )
-    if "task" in kwargs:
-        assert kwargs["task"] in ["LP", "IM", "NC"], (
-            "task should be either 'LP' (Link Prediction),            'IM'"
-            " (Influence Maximization) or 'NC' (Node Classification)"
-        )
     if "method" in kwargs:
         assert kwargs["method"] in [
             "deepwalk", "fairwalk"
@@ -98,35 +93,41 @@ def graph2embed(graph, method="deepwalk", implementation="karateclub"):
     return embed
 
 
+def get_embedding_path(dataset: str, method: str, implementation: str):
+    """
+    Construct path to the embeddings files following our conventions
+    """
+    path = f"../embeddings/{dataset}/{dataset}_{method}_{implementation}"
+    return path
+
+
 def save_embed(
-    embed: np.array, task: str, dataset: str, method: str, implementation: str
+    embed: np.array, dataset: str, method: str, implementation: str
 ):
-    """ "
+    """
     Saves an embedding to the appropriate directionary and file.
     TODO Maybe hyperparameter info like the number of embedding dimensions should be added
     For now without pickle for possible compatability issues.
     """
     check_input_formatting(
         dataset=dataset,
-        task=task,
         method=method,
         implementation=implementation,
     )
-    path = f"../embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
+    path = get_embedding_path(dataset, method, implementation)
     np.save(path, embed, allow_pickle=False)
 
 
-def load_embed(dataset: str, task: str, method: str, implementation: str):
-    """ "
+def load_embed(dataset: str, method: str, implementation: str):
+    """
     load an embedding.
     """
     check_input_formatting(
         dataset=dataset,
-        task=task,
         method=method,
         implementation=implementation,
     )
-    path = f"../embeddings/{task}/{dataset}/{dataset}_{method}_{implementation}"
+    path = get_embedding_path(dataset, method, implementation)
     if implementation == "perozzi" or implementation == "singer":
         # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
         # which messes up the (re-)indexing
