@@ -42,7 +42,7 @@ def raw_to_graph_format(attr_str, links_str):
     links = [
         (int(i1), int(i2))
         for node in links_str.strip().split("\n")
-        for i1, i2 in [node.split()]
+        for i1, i2 in [node.split()[:2]]
     ]
 
     # Make the mapping
@@ -73,9 +73,7 @@ def data2graph(dataset: str):
     check_input_formatting(dataset=dataset)
     path = f"../data/{dataset}/"
     path += splitext(listdir(path)[0])[0]
-    # TODO hardcode coupling attribute_name to the respective dataset within this function
-    # but maybe we can all give them the same name?
-    # TODO? Datasets may have more than one attribute (or is that case not relevant here?)
+
     with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
         attr, links = raw_to_graph_format(f_attr.read(), f_links.read())
 
@@ -83,6 +81,12 @@ def data2graph(dataset: str):
     G.add_nodes_from(attr)
     G.add_edges_from(links)
     return G
+
+
+def get_largest_connected_subgraph(graph):
+    nodes_subgraph = max(nx.connected_components(graph), key=len)
+    subgraph = nx.induced_subgraph(graph, nodes_subgraph)
+    return subgraph
 
 
 def graph2embed(graph, method="deepwalk", implementation="karateclub"):

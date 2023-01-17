@@ -187,7 +187,7 @@ class FairWalk:
         if 'workers' not in skip_gram_params:
             skip_gram_params['workers'] = self.workers
 
-        if 'size' not in skip_gram_params:
+        if 'vector_size' not in skip_gram_params:
             # skip_gram_params['size'] = self.dimensions
             # CHANGE BY JOB: CURRENT VERSION OF GENSIM USES 'vector_size' instead of 'size'
             skip_gram_params['vector_size'] = self.dimensions
