@@ -3,6 +3,8 @@ from os import listdir
 from os.path import splitext
 import networkx as nx
 from karateclub import DeepWalk
+# if fairwalk doesn't import properly, try to (re)install it in your env. See its readme for instructions
+from fairwalk import FairWalk
 
 
 def check_input_formatting(**kwargs):
@@ -87,9 +89,28 @@ def graph2embed(graph, method="deepwalk", implementation="karateclub"):
     check_input_formatting(method=method, implementation=implementation)
     if method == "deepwalk":
         if implementation == "karateclub":
+            # TODO CHANGE HYPERPARAMETERS TO THE ONES FROM THE CROSSWALK PAPER
             model = DeepWalk()
             model.fit(graph)
             embed = model.get_embedding()
+    elif method == "fairwalk":
+        if implementation == "singer":
+            n = len(graph.nodes())
+            node2group = {node: group for node, group in zip(
+                graph.nodes(), (5*np.random.random(n)).astype(int))}
+            nx.set_node_attributes(graph, node2group, "group")
+
+            # Precompute probabilities and generate walks
+            # TODO CHANGE HYPERPARAMETERS TO THE ONES FROM THE CROSSWALK PAPER
+            # FOR NOW IT'S THE SAME AS THE DEFAULT KARATECLUB DEEPWALK ONES
+            model = FairWalk(graph, workers=4)
+
+            # Get embedding
+            model = model.fit()
+
+            # Save embeddings as numpy array
+            embed = model.wv.vectors.copy()
+
     return embed
 
 
@@ -128,7 +149,7 @@ def load_embed(dataset: str, method: str, implementation: str):
         implementation=implementation,
     )
     path = get_embedding_path(dataset, method, implementation)
-    if implementation == "perozzi" or implementation == "singer":
+    if implementation == "perozzi":
         # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
         # which messes up the (re-)indexing
         path += ".embeddings"

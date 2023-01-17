@@ -1,3 +1,6 @@
+# MODIFICATION FOR THE CROSSWALK REPRODUCIBILITY PROJECT
+Line 191 of fairwalk.py is slightly altered to work with the newer version of gensim used in the env for this project
+
 # FairWalk
 
 Python3 implementation of the fairwalk algorithm Tahleen Rahman, Bartlomiej Surma, Michael Backes and Yang Zhang.

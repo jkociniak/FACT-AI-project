@@ -1,3 +1,7 @@
+import numpy as np
+import networkx as nx
+from fairwalk import FairWalk
+
 # FILES
 EMBEDDING_FILENAME = './embeddings.emb'
 EMBEDDING_MODEL_FILENAME = './embeddings.model'
