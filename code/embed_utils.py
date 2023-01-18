@@ -3,6 +3,7 @@ from os import listdir
 from os.path import splitext
 import networkx as nx
 from karateclub import DeepWalk
+
 # if fairwalk doesn't import properly, try to (re)install it in your env. See its readme for instructions
 from fairwalk import FairWalk
 
@@ -24,69 +25,47 @@ def check_input_formatting(**kwargs):
         )
     if "method" in kwargs:
         assert kwargs["method"] in [
-            "deepwalk", "fairwalk"
+            "deepwalk",
+            "fairwalk",
         ], "method should be 'deepwalk' or 'fairwalk' (for now)"
     if "implementation" in kwargs:
         assert kwargs["implementation"] in [
-            "karateclub", "singer"
+            "karateclub",
+            "singer",
         ], "implementation should be 'karateclub' or 'singer' (for now)"
-
-
-def raw_to_graph_format(attr_str, links_str):
-    # list of tuples
-    attr = [
-        (int(i), int(c))
-        for node in attr_str.strip().split("\n")
-        for i, c in [node.split()]
-    ]
-    links = [
-        (int(i1), int(i2))
-        for node in links_str.strip().split("\n")
-        for i1, i2 in [node.split()[:2]]
-    ]
-
-    # Make the mapping
-    mapping = {}
-    new_node = 0
-    for node, label in attr:
-        if node not in mapping.keys():
-            mapping[node] = new_node
-            new_node += 1
-        else:
-            raise ValueError("Duplicate node in attr data")
-
-    # Map to ordered and complete
-    # Attr
-    attr_oac = []
-    for node, label in attr:
-        attr_oac.append((mapping[node], {"class": label}))
-
-    # Links
-    links_oac = []
-    for node1, node2 in links:
-        links_oac.append((mapping[node1], mapping[node2]))
-
-    return attr_oac, links_oac
-
-
-def data2graph(dataset: str):
-    check_input_formatting(dataset=dataset)
-    path = f"../data/{dataset}/"
-    path += splitext(listdir(path)[0])[0]
-
-    with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
-        attr, links = raw_to_graph_format(f_attr.read(), f_links.read())
-
-    G = nx.Graph()
-    G.add_nodes_from(attr)
-    G.add_edges_from(links)
-    return G
 
 
 def get_largest_connected_subgraph(graph):
     nodes_subgraph = max(nx.connected_components(graph), key=len)
     subgraph = nx.induced_subgraph(graph, nodes_subgraph)
     return subgraph
+
+
+def data2graph(dataset: str):
+    path = f"../data/{dataset}/"
+    path += splitext(listdir(path)[0])[0]
+
+    with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
+        attr = [
+            (i, {"class": int(c)})
+            for node in f_attr.read().strip().split("\n")
+            for i, c in [node.split()]
+        ]
+        links = [
+            (int(i1), int(i2))
+            for node in f_links.read().strip().split("\n")
+            for i1, i2 in [node.split()[:2]]
+        ]
+
+    graph = nx.Graph()
+    graph.add_nodes_from(attr)
+    graph.add_edges_from(links)
+    # for the twitter dataset only use the largest connected subgraph
+    if dataset == "twitter":
+        graph = get_largest_connected_subgraph(graph)
+    graph = nx.convert_node_labels_to_integers(graph, label_attribute="label")
+
+    return graph
 
 
 def graph2embed(graph, method="deepwalk", implementation="karateclub"):
@@ -100,8 +79,12 @@ def graph2embed(graph, method="deepwalk", implementation="karateclub"):
     elif method == "fairwalk":
         if implementation == "singer":
             n = len(graph.nodes())
-            node2group = {node: group for node, group in zip(
-                graph.nodes(), (5*np.random.random(n)).astype(int))}
+            node2group = {
+                node: group
+                for node, group in zip(
+                    graph.nodes(), (5 * np.random.random(n)).astype(int)
+                )
+            }
             nx.set_node_attributes(graph, node2group, "group")
 
             # Precompute probabilities and generate walks
@@ -126,9 +109,7 @@ def get_embedding_path(dataset: str, method: str, implementation: str):
     return path
 
 
-def save_embed(
-    embed: np.array, dataset: str, method: str, implementation: str
-):
+def save_embed(embed: np.array, dataset: str, method: str, implementation: str):
     """
     Saves an embedding to the appropriate directionary and file.
     TODO Maybe hyperparameter info like the number of embedding dimensions should be added
@@ -160,9 +141,7 @@ def load_embed(dataset: str, method: str, implementation: str):
         embed = np.genfromtxt(
             path, dtype=np.single, skip_header=1, usecols=np.arange(1, 65)
         )
-        indices = np.genfromtxt(
-            path, dtype=np.uintc, skip_header=1, usecols=[0]
-        )
+        indices = np.genfromtxt(path, dtype=np.uintc, skip_header=1, usecols=[0])
         # sort the embeddings
         embed = embed[indices]
     else:
