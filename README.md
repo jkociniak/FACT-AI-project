@@ -62,3 +62,18 @@ $deepwalk --input {INPUT_PATH(.links)} --format edgelist --output {OUTPUT(.embed
 For example for the second synthetic dataset (note that the file path may have changed when you read this):
 $deepwalk --input ../data/synthetic_n500_Pred0.7_Phom0.025_Phet0.001.links --format edgelist --output synth2_deepwalk_perozzi.embeddings
 You should now have a file 'synth2_deepwalk_perozzi.embeddings' in the dir
+
+
+## Environment setup (Mac M1)
+
+```
+conda update -n base -c conda-forge conda
+conda create -n fact-ai python=3.10.8
+conda activate fact-ai
+conda install networkx gensim numpy tqdm 
+conda install joblib
+conda install karateclub
+cd fairwalk
+pip install setuptools==58.2.0
+python setup.py install
+```
