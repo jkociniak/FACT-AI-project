@@ -1,5 +1,6 @@
-import networkx as nx
 import numpy as np
+import numpy.ma as ma
+
 from tqdm import tqdm
 
 from embed_utils import *
@@ -22,16 +23,29 @@ to Eq. (2), for link prediction. It confirms the superiority of
 CrossWalk over FairWalk in reducing disparity with a slight
 decrease in accuracy.
 """
+def get_label_pairs(G):
+    """
+    Return list of label pair as tuple
+    E.g. for Rice dataset with attribute labels 0 and 1 it returns
+    [(0,0), (0,1), (1,1)]
+    """
+    all_labels = get_node_labels(G)
+    label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
+    
+    return label_pairs
+
 def get_train_links(G):
     """
     Output: 
-    List of tuples (node1, node2, label1, label2, connected_bool)
+    List of tuples (node1, node2, label, connected_bool)
     node1 is the node where the link starts
     node2 is the node where the link ends
-    label1 is the "class" of node 1
-    label2 is the "class" of node 2
+    label is the type of connection (e.g. for Rice we have 3 types: 0,0 1,1 or 1,0)
     connected_bool is a boolean that determines if the link is positive or negative (connected or unconnected nodes)
     """
+    all_labels = get_node_labels(G)
+    label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
+
     connected_nodes = G.edges
     train_links = []
     nodes = list(G.nodes)
@@ -41,58 +55,57 @@ def get_train_links(G):
         for node2 in nodes:
             if node2 in checked_nodes or node1 == node2:
                 continue
-
-            label1 = G.nodes("class")[node1]
-            label2 = G.nodes("class")[node2]
             
-            if (node1,node2) in connected_nodes or (node2, node1) in connected_nodes:
-                connected_bool = True
-            else:
-                connected_bool = False
+            for i, pair in enumerate(label_pairs):
+                if G.nodes("class")[node1] == pair[0] and G.nodes("class")[node2] == pair[1]:
+                    label = i
 
-            train_links.append((node1, node2, label1, label2, connected_bool))
+            if (node1,node2) in connected_nodes or (node2, node1) in connected_nodes:
+                connected_bool = 1
+            else:
+                connected_bool = 0
+
+            train_links.append((node1, node2, label, connected_bool))
         checked_nodes.append(node1)
 
     return train_links
 
 
-def get_train_test(links_group):
-    pos_data = [link for link in A if link[4]]
-    neg_data = [link for link in A if not link[4]]
+def get_train_test(G, links_group):
+    """
+    Get the train and test split 
+    Returns two list of tuples, same format as get_train_links
+    [(node1, node2, label, connected_bool)]
+    """
+    pos_data = [link for link in links_group if link[3]]
+    neg_data = [link for link in links_group if not link[3]]
+
+    label_pairs = get_label_pairs(G)
+
+    train = []
+    test = []
+
+    for group in range(len(label_pairs)):
+        # Split 1:10 test:train per group
+        pos_group_x = shuffle([d for d in pos_data if d[2] == group])
+        neg_group_x = shuffle([d for d in neg_data if d[2] == group])[:len(pos_group_x)]
+        pos_train, pos_test = train_test_split(pos_group_x, test_size=0.1)
+        neg_train, neg_test = train_test_split(neg_group_x, test_size=0.1)
+
+        # Add alle train and test data together
+        train += pos_train + neg_train
+        test += pos_test + shuffle(neg_test)[:len(pos_test)]
+
+    return shuffle(train), shuffle(test)
     
-    pos = train_test_split(pos_data, test_size=0.1)
-    neg = train_test_split(neg_data, test_size=0.1)
-
-    train = shuffle(pos[0] + neg[0])
-    test = shuffle(pos[1] + neg[1])
-
-    return train, test
-
-
-def read_sensitive_attr(G):
-    sens_attr = dict()
-
-    for (id, label) in G.nodes.items():
-        # Why do they check if the node is in the embedding in their code?
-        # if id is in embedding:
-        sens_attr[id] = label["class"]
-    return sens_attr
-
-def get_groups(links):
-    A = []
-    B = []
-    AB = []
-
-    for link in links:
-        if link[2] == 0 and link[3] == 0:
-            A.append(link)
-        elif link[2] == 1 and link[3] == 1:
-            B.append(link)
-        else:
-            AB.append(link)
-
-    return A, B, AB
+def get_node_labels(G):
+    """
+    Return list of different labels 
+    """
+    nodes = list(G.nodes(data="class"))
+    distinct_labels = list(set([n[1] for n in nodes]))
     
+    return distinct_labels
 
 def extract_features(u,v):
     return (u-v)**2
@@ -100,55 +113,75 @@ def extract_features(u,v):
 
 
 if __name__ == "__main__":
+
+    ##################
+    #####  Rice  #####
+    ##################
     
-    all_labels = [0, 1]
-
-    label_pairs = [str(all_labels[i]) + ',' + str(all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
-    accuracy_keys = label_pairs + ['max_diff', 'var', 'total']
-
-    accuracy = {k : [] for k in accuracy_keys}
-
+    # Get embedding
     emb = load_embed("rice", "fairwalk", "singer")
-
     G = data2graph("rice")
-    sens_attr = read_sensitive_attr(G)
 
+    # Find the different class labels
+    all_labels = get_node_labels(G)
+
+    # Print the different type of connection groups
+    label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
+    print(f"We have {len(label_pairs)} groups where")
+    for i, pair in enumerate(label_pairs):
+        print(f"Group {i} is connection type {pair}")
+
+    # Create the train links
+    # For rice we have labels {0: link 0 to 0, 1: link 0 to 1, 1:link 1 to 1}
     train_links = get_train_links(G)
-
-    A, B, AB = get_groups(train_links) 
-
+    
+    accuracy = {"accuracy per iteration": [], "disparity per iteration": []}
 
     for iter in [str(k) for k in range(1,6)]:
         
         print('iter: ', iter)
 
-        # New train test set
-        train_A, test_A = get_train_test(A)
-        train_B, test_B = get_train_test(B)
-        train_AB, test_AB = get_train_test(AB)
+        train, test = get_train_test(G, train_links)
 
-        for (key, train, test) in zip(label_pairs, [train_A, train_B, train_AB], [test_A, test_B, test_AB]):
-            
-            clf = LogisticRegression(solver='lbfgs')
-            x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
-            y_train = np.array([l[4] for l in train])
-            x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
-            y_test = np.array([l[4] for l in test])
-            clf.fit(x_train, y_train)
-            y_pred = clf.predict(x_test)
-            accuracy[key].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
+        clf = LogisticRegression(solver='lbfgs')
 
-        last_accs = [accuracy[k][-1] for k in label_pairs]
-        accuracy['max_diff'].append(np.max(last_accs) - np.min(last_accs))
-        accuracy['var'].append(np.var(last_accs))
+        x_train_group_indices = np.array([l[2] for l in train])
+        x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
+    
+        y_train = np.array([l[3] for l in train])
 
-        print(accuracy)
-        print()
+        x_test_group_indices = np.array([l[2] for l in test])
+        x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
+        
+        y_test = np.array([l[3] for l in test])
+
+        clf.fit(x_train, y_train)
+        
+        y_pred = clf.predict(x_test)
+        old = y_pred.copy()
+        accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
+        
+        disparity = []
+        # Make mask with False for indices to drop and True for indices of group to keep
+        for group in range(len(label_pairs)):
+            mask_test = ma.masked_not_equal(x_test_group_indices, group)
+            mask_train = ma.masked_not_equal(x_train_group_indices, group)
+
+            y_test_group_x = y_test[mask_test == group]
+            y_pred_group_x = y_pred[mask_test == group]
+
+            x_test_group_x = x_train[mask_train == group]
+           
+            disp_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
+            disparity.append((f"group: {group}", disp_group_x))
+        
+        accuracy["disparity per iteration"].append(disparity)
 
     print(accuracy)
     print()
-    for k in accuracy_keys:
-        print(k + ':', np.mean(accuracy[k]), '(' + str(np.std(accuracy[k])) + ')')
+
+    accuracy["mean accuracy"] = np.mean(accuracy["accuracy per iteration"])
+    accuracy["standard deviation"] = np.std(accuracy["accuracy per iteration"])
 
 
 
