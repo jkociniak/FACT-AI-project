@@ -6,7 +6,7 @@ from karateclub import DeepWalk, Node2Vec
 from gensim.models import Word2Vec
 import walker
 
-# if fairwalk doesn't import properly, try to (re)install it in your env. See its readme for instructions
+# if fairwalk doesn't import properly, try to install it in your env. See its readme for instructions
 from fairwalk import FairWalk
 
 
