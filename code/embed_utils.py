@@ -2,7 +2,9 @@ import numpy as np
 from os import listdir
 from os.path import splitext
 import networkx as nx
-from karateclub import DeepWalk
+from karateclub import DeepWalk, Node2Vec
+from gensim.models import Word2Vec
+import walker
 
 # if fairwalk doesn't import properly, try to (re)install it in your env. See its readme for instructions
 from fairwalk import FairWalk
@@ -23,11 +25,17 @@ def check_input_formatting(**kwargs):
             "dataset should be either 'rice', 'synth_3layers',"
             " 'synth2', 'synth3' or 'twitter'"
         )
-    if "method" in kwargs:
-        assert kwargs["method"] in [
-            "deepwalk",
+    if "reweight_method" in kwargs:
+        assert kwargs["reweight_method"] in [
+            "default",
             "fairwalk",
-        ], "method should be 'deepwalk' or 'fairwalk' (for now)"
+            "crosswalk",
+        ], "reweight_method should be 'default', 'fairwalk' or 'crosswalk'"
+    if "embed_method" in kwargs:
+        assert kwargs["embed_method"] in [
+            "deepwalk",
+            "node2vec",
+        ], "embed_method should be 'deepwalk' or 'node2vec'"
     if "implementation" in kwargs:
         assert kwargs["implementation"] in [
             "karateclub",
@@ -47,7 +55,7 @@ def data2graph(dataset: str):
 
     with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
         attr = [
-            (i, {"class": int(c)})
+            (int(i), {"class": int(c)})
             for node in f_attr.read().strip().split("\n")
             for i, c in [node.split()]
         ]
@@ -64,19 +72,72 @@ def data2graph(dataset: str):
     if dataset == "twitter":
         graph = get_largest_connected_subgraph(graph)
     graph = nx.convert_node_labels_to_integers(graph, label_attribute="label")
-
     return graph
 
 
-def graph2embed(graph, method="deepwalk", implementation="karateclub"):
-    check_input_formatting(method=method, implementation=implementation)
-    if method == "deepwalk":
+# def reweight_edges(graph, reweight_method):
+#     """
+#     reweight edge weights using either fairwalk or crosswalk
+#     """
+#     if reweight_method == "fairwalk":
+#         # TODO
+#         pass
+#     elif reweight_method == "crosswalk":
+#         # TODO
+#         pass
+#     else:
+#         pass
+#     return graph
+
+
+# def graph2embed(
+#     graph, reweight_method: str, embed_method: str, implementation: str, p=1, q=1
+# ):
+#     check_input_formatting(
+#         reweight_method=reweight_method,
+#         embed_method=embed_method,
+#         implementation=implementation,
+#     )
+#     graph = reweight_edges(graph, reweight_method)
+#     # TODO, not sure about the hyperparameters for word2vec
+#     kwargs_walks = {"n_walks": 10, "walk_len": 80}
+#     kwargs_word2vec = {"vector_size": 128, "workers": 4, "min_count": 0, "window": 10}
+#     if embed_method == "deepwalk":
+#         kwargs_walks.update({"p": 1, "q": 1})
+#         # skipgram with hierarchical softmax
+#         kwargs_word2vec.update({"sg": 1, "hs": 1})
+#     elif embed_method == "node2vec":
+#         kwargs_walks.update({"p": p, "q": q})
+#         # skipgram with negative sampling
+#         kwargs_word2vec.update({"sg": 1, "hs": 0, "negative": 5})
+#     # get walks
+#     walks = walker.random_walks(graph, **kwargs_walks)
+
+#     model = Word2Vec(walks, **kwargs_word2vec)
+#     # TODO verifying that order with respect to initial indices is preserved
+#     embed = model.wv.vectors.copy()
+
+
+def graph2embed(graph, reweight_method, embed_method, implementation="karateclub"):
+    check_input_formatting(
+        reweight_method=reweight_method,
+        embed_method=embed_method,
+        implementation=implementation,
+    )
+    graph = reweight_graph(graph, reweight_method)
+    if embed_method == "deepwalk":
         if implementation == "karateclub":
             # TODO CHANGE HYPERPARAMETERS TO THE ONES FROM THE CROSSWALK PAPER
             model = DeepWalk()
             model.fit(graph)
             embed = model.get_embedding()
-    elif method == "fairwalk":
+    elif embed_method == "node2vec":
+        if implementation == "karateclub":
+            # TODO CHANGE HYPERPARAMETERS TO THE ONES FROM THE CROSSWALK PAPER
+            model = Node2Vec()
+            model.fit(graph)
+            embed = model.get_embedding()
+    elif embed_method == "fairwalk":
         if implementation == "singer":
             n = len(graph.nodes())
             node2group = {
@@ -101,50 +162,60 @@ def graph2embed(graph, method="deepwalk", implementation="karateclub"):
     return embed
 
 
-def get_embedding_path(dataset: str, method: str, implementation: str):
+def get_embedding_path(
+    dataset: str, reweight_method: str, embed_method: str, implementation: str
+):
     """
     Construct path to the embeddings files following our conventions
     """
-    path = f"../embeddings/{dataset}/{dataset}_{method}_{implementation}"
+    path = f"../embeddings/{dataset}/{dataset}_{reweight_method}_{embed_method}_{implementation}"
     return path
 
 
-def save_embed(embed: np.array, dataset: str, method: str, implementation: str):
+def save_embed(
+    embed: np.array,
+    dataset: str,
+    reweight_method: str,
+    embed_method: str,
+    implementation: str,
+):
     """
     Saves an embedding to the appropriate directionary and file.
     TODO Maybe hyperparameter info like the number of embedding dimensions should be added
     For now without pickle for possible compatability issues.
     """
     check_input_formatting(
-        dataset=dataset,
-        method=method,
+        reweight_method=reweight_method,
+        embed_method=embed_method,
         implementation=implementation,
     )
-    path = get_embedding_path(dataset, method, implementation)
+    path = get_embedding_path(dataset, reweight_method, embed_method, implementation)
     np.save(path, embed, allow_pickle=False)
 
 
-def load_embed(dataset: str, method: str, implementation: str):
+def load_embed(
+    dataset: str, reweight_method: str, embed_method: str, implementation: str
+):
     """
     load an embedding.
     """
     check_input_formatting(
-        dataset=dataset,
-        method=method,
+        reweight_method=reweight_method,
+        embed_method=embed_method,
         implementation=implementation,
     )
-    path = get_embedding_path(dataset, method, implementation)
-    if implementation == "perozzi":
-        # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
-        # which messes up the (re-)indexing
-        path += ".embeddings"
-        embed = np.genfromtxt(
-            path, dtype=np.single, skip_header=1, usecols=np.arange(1, 65)
-        )
-        indices = np.genfromtxt(path, dtype=np.uintc, skip_header=1, usecols=[0])
-        # sort the embeddings
-        embed = embed[indices]
-    else:
-        embed = np.load(path + ".npy", allow_pickle=False)
+    path = get_embedding_path(dataset, reweight_method, embed_method, implementation)
+    # if implementation == "perozzi":
+    #     # this doesn't work yet, since the perozzi implementation seems to discard unconnected nodes
+    #     # which messes up the (re-)indexing
+    #     path = get_embedding_path(dataset, reweight_method, embed_method, implementation)
+    #     embed = np.genfromtxt(
+    #         path, dtype=np.single, skip_header=1, usecols=np.arange(1, 65)
+    #     )
+    #     indices = np.genfromtxt(path, dtype=np.uintc, skip_header=1, usecols=[0])
+    #     # sort the embeddings
+    #     embed = embed[indices]
+    # else:
+    embed = np.load(path + ".npy", allow_pickle=False)
 
     return embed
