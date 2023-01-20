@@ -1,13 +1,16 @@
 """
-Taken from https://github.com/aditya-grover/node2vec/blob/master/src/node2vec.py 
-Which is part of the reference implementation of node2vec: https://github.com/aditya-grover/node2vec/
-Author: Aditya Grover
-For more details, refer to the paper:
-node2vec: Scalable Feature Learning for Networks
-Aditya Grover and Jure Leskovec 
-Knowledge Discovery and Data Mining (KDD), 2016
+Taken from https://github.com/phanein/deepwalk/blob/master/deepwalk/graph.py
+Which is part of the reference implementation of deepwalk: https://github.com/phanein/deepwalk
 
 The file is slightly altered to work with python3
+TODO: maybe merge with the graph class from node2vec.py
+TODO: make it work weighted graphs
+    -https://github.com/phanein/deepwalk/issues/26
+    -https://github.com/phanein/deepwalk/issues/110
+TODO: do we need it to work with directed graphs?
+    -https://github.com/phanein/deepwalk/issues/25
+TODO: how to handle disconnected nodes?
+    -https://github.com/phanein/deepwalk/issues/36
 """
 
 #!/usr/bin/env python
