@@ -1,3 +1,15 @@
+"""
+Taken from https://github.com/aditya-grover/node2vec/blob/master/src/node2vec.py 
+Which is part of the reference implementation of node2vec: https://github.com/aditya-grover/node2vec/
+Author: Aditya Grover
+For more details, refer to the paper:
+node2vec: Scalable Feature Learning for Networks
+Aditya Grover and Jure Leskovec 
+Knowledge Discovery and Data Mining (KDD), 2016
+
+The file is slightly altered to work with python3
+"""
+
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
