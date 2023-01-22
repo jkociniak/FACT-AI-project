@@ -8,16 +8,24 @@ import node2vec
 import deepwalk
 
 
+CLASS = "class"
 DEFAULT_WEIGHT = 1
 SEED = 0
-NODE2VEC_HYPER = {"p": 0.5, "q": 0.5}
+p_NODE2VEC = 0.5
+q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
 WALKS_HYPER = {"num_walks": 10, "walk_length": 80}
-SHARED_WORD2VEC_HYPER = {"vector_size": 128, "workers": 8, "min_count": 0}
-# skipgram with hierarchical softmax
-DEEPWALK_WORD2VEC_HYPER = {"sg": 1, "hs": 1, "window": 5}
-# skipgram with negative sampling TODO add "negative": 5 ?
-NODE2VEC_WORD2VEC_HYPER = {"sg": 1, "hs": 0, "window": 10}
+SHARED_WORD2VEC_HYPER = {
+    "vector_size": 128,
+    "workers": 8,
+    "min_count": 0,
+    "sg": 1,
+    "window": 5,
+}
+# hierarchical softmax
+DEEPWALK_WORD2VEC_HYPER = {"hs": 1}
+# sigmoid with negative sampling TODO add "negative": INT ?
+NODE2VEC_WORD2VEC_HYPER = {"hs": 0}
 
 
 def check_input_formatting(**kwargs):
@@ -57,7 +65,7 @@ def data2graph(dataset: str):
 
     with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
         attr = [
-            (int(i), {"class": int(c)})
+            (int(i), {CLASS: int(c)})
             for node in f_attr.read().strip().split("\n")
             for i, c in [node.split()]
         ]
@@ -98,25 +106,36 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         embed_method=embed_method,
     )
     graph = reweight_edges(graph, reweight_method)
+    kwargs_word2vec = SHARED_WORD2VEC_HYPER.copy()
 
     if embed_method == "deepwalk":
-        kwargs_word2vec = SHARED_WORD2VEC_HYPER | DEEPWALK_WORD2VEC_HYPER
-        graph_deepwalk = deepwalk.from_networkx(graph)
-        walks = deepwalk.build_deepwalk_corpus(
-            graph_deepwalk,
-            num_paths=WALKS_HYPER["num_walks"],
-            path_length=WALKS_HYPER["walk_length"],
-            rand=random.Random(SEED),
-        )
-
+        # kwargs_word2vec = SHARED_WORD2VEC_HYPER | DEEPWALK_WORD2VEC_HYPER
+        # graph_deepwalk = deepwalk.from_networkx(graph)
+        # walks = deepwalk.build_deepwalk_corpus(
+        #     graph_deepwalk,
+        #     num_paths=WALKS_HYPER["num_walks"],
+        #     path_length=WALKS_HYPER["walk_length"],
+        #     rand=random.Random(SEED),
+        # )
+        kwargs_word2vec.update(DEEPWALK_WORD2VEC_HYPER)
+        p = 1
+        q = 1
     elif embed_method == "node2vec":
-        kwargs_word2vec = SHARED_WORD2VEC_HYPER | NODE2VEC_WORD2VEC_HYPER
-        graph_node2vec = node2vec.Graph(
-            graph, is_directed=graph.is_directed(), **NODE2VEC_HYPER
-        )
-        graph_node2vec.preprocess_transition_probs()
-        walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
+        # graph_node2vec = node2vec.Graph(
+        #     graph, is_directed=graph.is_directed(), **NODE2VEC_HYPER
+        # )
+        # graph_node2vec.preprocess_transition_probs()
+        # walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
         # walks = [list(map(str, walk)) for walk in walks]
+        kwargs_word2vec.update(NODE2VEC_WORD2VEC_HYPER)
+        p = p_NODE2VEC
+        q = q_NODE2VEC
+
+    graph_node2vec = node2vec.Graph(graph, is_directed=graph.is_directed(), p=p, q=q)
+    graph_node2vec.preprocess_transition_probs()
+    walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
+    # Not sure if line below is necessary
+    walks = [list(map(str, walk)) for walk in walks]
 
     # TODO verifying that order with respect to initial indices is preserved
     model = Word2Vec(walks, **kwargs_word2vec)
