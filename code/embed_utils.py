@@ -134,10 +134,10 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
     graph_node2vec = node2vec.Graph(graph, is_directed=graph.is_directed(), p=p, q=q)
     graph_node2vec.preprocess_transition_probs()
     walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
-
+    walks = [list(map(str, walk)) for walk in walks]
     model = Word2Vec(walks, **kwargs_word2vec)
     original_graph_indices = [
-        model.wv.key_to_index[i] for i in range(model.wv.__len__())
+        model.wv.key_to_index[str(i)] for i in range(model.wv.__len__())
     ]
     # TODO is copy() necessary here?
     embed = model.wv[original_graph_indices].copy()
