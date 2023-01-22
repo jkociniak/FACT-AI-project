@@ -137,7 +137,7 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
 
     model = Word2Vec(walks, **kwargs_word2vec)
     original_graph_indices = [
-        model.wv.key_to_index[str(i)] for i in range(model.wv.__len__())
+        model.wv.key_to_index[i] for i in range(model.wv.__len__())
     ]
     # TODO is copy() necessary here?
     embed = model.wv[original_graph_indices].copy()
