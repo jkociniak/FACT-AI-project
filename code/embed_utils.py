@@ -90,14 +90,35 @@ def reweight_edges(graph, reweight_method):
     reweight edge weights using either fairwalk or crosswalk
     """
     if reweight_method == "fairwalk":
-        # TODO
-        pass
+        d_graph = graph.to_directed()
+        node2class = nx.get_node_attributes(d_graph, CLASS)
+        classes = np.unique(list(node2class.values()))
+
+        for node_index in d_graph.nodes():
+            classes_neighbors = [
+                node2class[neighbor_index]
+                for neighbor_index in d_graph.neighbors(node_index)
+            ]
+            n_per_class = {}
+            for cl in classes:
+                n_of_class = classes_neighbors.count(cl)
+                if n_of_class:
+                    n_per_class[cl] = n_of_class
+            n_dif_classes = len(n_per_class)
+
+            for neighbor_index in d_graph.neighbors(node_index):
+                old_weight = d_graph[node_index][neighbor_index]["weight"]
+                new_weight = old_weight / (
+                    n_per_class[node2class[neighbor_index]] * n_dif_classes
+                )
+                d_graph[node_index][neighbor_index]["weight"] = new_weight
+
+        return d_graph
     elif reweight_method == "crosswalk":
         # TODO
         pass
     else:
-        pass
-    return graph
+        return graph
 
 
 def graph2embed(graph, reweight_method: str, embed_method: str):
