@@ -86,27 +86,6 @@ def data2graph(dataset: str):
     return graph
 
 
-def estimate_proximity(graph, node: int, class_node, r=10, d=80):
-    """
-    Estimates a measure of proximity of a node to other groups in the graph
-    In the paper also known as m()
-    TODO what values to use for r and d in estimate_proximity()?
-    """
-    walks = walker.random_walks(
-        G, n_walks=r, walk_len=d, start_nodes=G.nodes, verbose=False
-    )
-    n_nodes = G.number_of_nodes()
-    total_walks = walks.shape[0]
-    denominator = r * d
-    proximity = [
-        np.count_nonzero(
-            walks[np.arange(node, total_walks, n_nodes)] != node2class[node]
-        )
-        / denominator
-        for node in G.nodes
-    ]
-
-
 def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     """
     reweight edge weights using either fairwalk or crosswalk
