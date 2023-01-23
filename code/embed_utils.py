@@ -1,4 +1,5 @@
 import numpy as np
+from collections import Counter
 from os import listdir
 from os.path import splitext
 import networkx as nx
@@ -15,7 +16,6 @@ SEED = 0
 P_NODE2VEC = 0.5
 Q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
-# WALKS_HYPER = {"num_walks": 10, "walk_length": 80}
 WALKS_HYPER = {"n_walks": 10, "walk_len": 80}
 SHARED_WORD2VEC_HYPER = {
     "vector_size": 128,
@@ -106,22 +106,22 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     Note that this does not normalize the weights, as that is done later in graph2embed
     by preprocess_transition_probs() anyway
     """
+    # Initiate new directed graph to store the new weights
     d_graph = graph.to_directed()
     node2class = nx.get_node_attributes(d_graph, CLASS_NAME)
-    classes = np.unique(list(node2class.values()))
 
     if reweight_method == "fairwalk":
+        # Get the unique classes
+        classes = np.unique(list(node2class.values()))
         for node in d_graph.nodes():
+            # Collect class information of the neighbors
             classes_neighbors = [
                 node2class[neighbor] for neighbor in d_graph.neighbors(node)
             ]
-            n_per_class = {}
-            for cl in classes:
-                n_of_class = classes_neighbors.count(cl)
-                if n_of_class:
-                    n_per_class[cl] = n_of_class
+            n_per_class = Counter(classes_neighbors)
             n_dif_classes = len(n_per_class)
 
+            # Compute the new weights
             for neighbor in d_graph.neighbors(node):
                 old_weight = graph[node][neighbor]["weight"]
                 new_weight = old_weight / (
@@ -130,13 +130,14 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
-        # Probably faster if compute all at ones by passing all nodes to start_nodes and then restructuring the list
+        # TODO Probably faster if compute all at ones by passing all nodes to start_nodes and then restructuring the list
         proximities = [
             estimate_proximity(graph, node, node2class[node])
             for node in d_graph.nodes()
         ]
 
         for node in d_graph.nodes():
+            # Split the neighbors based on whether they share the class of the source node
             neigbors_same_class = []
             neigbors_diff_class = []
             for neighbor in d_graph.neighbors(node):
@@ -144,12 +145,15 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                     neigbors_same_class.append(neighbor)
                 else:
                     neigbors_diff_class.append(neighbor)
+            # Compute new weights from the source node to the neighbors of the same class
+            # First compute the shared denominator
             neigbors_same_class_denominator = sum(
                 [
                     graph[node][neighbor]["weight"] * proximities[neighbor] ** p
                     for neighbor in neigbors_same_class
                 ]
             )
+            # Now individually update all the weights
             for neighbor in neigbors_same_class:
                 old_weight = graph[node][neighbor]["weight"]
                 new_weight = (
@@ -159,6 +163,8 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                     / neigbors_same_class_denominator
                 )
                 d_graph[node][neighbor]["weight"] = new_weight
+            # Compute new weights from the source node to the neighbors of a different class
+            # First compute the shared denominator
             n_neigbors_diff_class = len(neigbors_diff_class)
             neigbors_diff_class_denominator = sum(
                 [
@@ -168,6 +174,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                     for neighbor in neigbors_diff_class
                 ]
             )
+            # Now individually update all the weights
             for neighbor in neigbors_diff_class:
                 old_weight = graph[node][neighbor]["weight"]
                 new_weight = (
@@ -205,6 +212,7 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
 
     # Generate embeddings
     model = Word2Vec(walks, **kwargs_word2vec)
+    # Ensure that the indices stay consistent
     original_graph_indices = [
         model.wv.key_to_index[str(i)] for i in range(model.wv.__len__())
     ]
