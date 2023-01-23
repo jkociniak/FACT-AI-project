@@ -119,8 +119,6 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     node2class = nx.get_node_attributes(d_graph, CLASS_NAME)
 
     if reweight_method == "fairwalk":
-        # Get the unique classes
-        classes = np.unique(list(node2class.values()))
         for node in d_graph.nodes():
             # Collect class information of the neighbors
             classes_neighbors = [
