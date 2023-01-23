@@ -5,14 +5,19 @@ from os.path import splitext
 import networkx as nx
 from gensim.models import Word2Vec
 import node2vec
-import deepwalk
+
+# import deepwalk
+
+# pip install pybind11
+# pip install graph-walker
+import walker
 
 
 CLASS = "class"
 DEFAULT_WEIGHT = 1
 SEED = 0
-p_NODE2VEC = 0.5
-q_NODE2VEC = 0.5
+P_NODE2VEC = 0.5
+Q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
 WALKS_HYPER = {"num_walks": 10, "walk_length": 80}
 SHARED_WORD2VEC_HYPER = {
@@ -85,19 +90,32 @@ def data2graph(dataset: str):
     return graph
 
 
-def reweight_edges(graph, reweight_method):
+def estimate_proximity(graph, node: int, class_node, r: int, d: int):
+    """
+    Estimates a measure of proximity of a node to other groups in the graph
+    In the paper also known as m()
+    """
+    walks = walker.random_walks(
+        graph, n_walks=r, walk_len=d, start_nodes=[node], verbose=False
+    )
+    proximity = np.count_nonzero(walks != class_node) / (r * d)
+    return proximity
+
+
+def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     """
     reweight edge weights using either fairwalk or crosswalk
+    Note that this does not normalize the weights, as that is done later in graph2embed
+    by preprocess_transition_probs() anyway
     """
-    if reweight_method == "fairwalk":
-        d_graph = graph.to_directed()
-        node2class = nx.get_node_attributes(d_graph, CLASS)
-        classes = np.unique(list(node2class.values()))
+    d_graph = graph.to_directed()
+    node2class = nx.get_node_attributes(d_graph, CLASS)
+    classes = np.unique(list(node2class.values()))
 
-        for node_index in d_graph.nodes():
+    if reweight_method == "fairwalk":
+        for node in d_graph.nodes():
             classes_neighbors = [
-                node2class[neighbor_index]
-                for neighbor_index in d_graph.neighbors(node_index)
+                node2class[neighbor] for neighbor in d_graph.neighbors(node)
             ]
             n_per_class = {}
             for cl in classes:
@@ -106,19 +124,64 @@ def reweight_edges(graph, reweight_method):
                     n_per_class[cl] = n_of_class
             n_dif_classes = len(n_per_class)
 
-            for neighbor_index in d_graph.neighbors(node_index):
-                old_weight = d_graph[node_index][neighbor_index]["weight"]
+            for neighbor in d_graph.neighbors(node):
+                old_weight = graph[node][neighbor]["weight"]
                 new_weight = old_weight / (
-                    n_per_class[node2class[neighbor_index]] * n_dif_classes
+                    n_per_class[node2class[neighbor]] * n_dif_classes
                 )
-                d_graph[node_index][neighbor_index]["weight"] = new_weight
+                d_graph[node][neighbor]["weight"] = new_weight
 
-        return d_graph
     elif reweight_method == "crosswalk":
-        # TODO
-        pass
-    else:
-        return graph
+        # TODO what values to use for r and d in estimate_proximity()?
+        # Probably faster if compute all at ones by passing all nodes to start_nodes and then restructuring the list
+        proximities = [
+            estimate_proximity(graph, node, node2class[node], 10, 10)
+            for node in d_graph.nodes()
+        ]
+
+        for node in d_graph.nodes():
+            neigbors_same_class = []
+            neigbors_diff_class = []
+            for neighbor in d_graph.neighbors(node):
+                if node2class[node] == node2class[neighbor]:
+                    neigbors_same_class.append(neighbor)
+                else:
+                    neigbors_diff_class.append(neighbor)
+            neigbors_same_class_denominator = sum(
+                [
+                    graph[node][neighbor]["weight"] * proximities[neighbor] ** p
+                    for neighbor in neigbors_same_class
+                ]
+            )
+            for neighbor in neigbors_same_class:
+                old_weight = graph[node][neighbor]["weight"]
+                new_weight = (
+                    old_weight
+                    * (1 - alpha)
+                    * proximities[neighbor] ** p
+                    / neigbors_same_class_denominator
+                )
+                d_graph[node][neighbor]["weight"] = new_weight
+            n_neigbors_diff_class = len(neigbors_diff_class)
+            neigbors_diff_class_denominator = sum(
+                [
+                    n_neigbors_diff_class
+                    * graph[node][neighbor]["weight"]
+                    * proximities[neighbor] ** p
+                    for neighbor in neigbors_diff_class
+                ]
+            )
+            for neighbor in neigbors_diff_class:
+                old_weight = graph[node][neighbor]["weight"]
+                new_weight = (
+                    old_weight
+                    * alpha
+                    * proximities[neighbor] ** p
+                    / neigbors_diff_class_denominator
+                )
+                d_graph[node][neighbor]["weight"] = new_weight
+
+    return d_graph
 
 
 def graph2embed(graph, reweight_method: str, embed_method: str):
@@ -126,7 +189,8 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         reweight_method=reweight_method,
         embed_method=embed_method,
     )
-    graph = reweight_edges(graph, reweight_method)
+    if reweight_method != "default":
+        graph = reweight_edges(graph, reweight_method)
     kwargs_word2vec = SHARED_WORD2VEC_HYPER.copy()
 
     if embed_method == "deepwalk":
@@ -149,8 +213,8 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         # walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
         # walks = [list(map(str, walk)) for walk in walks]
         kwargs_word2vec.update(NODE2VEC_WORD2VEC_HYPER)
-        p = p_NODE2VEC
-        q = q_NODE2VEC
+        p = P_NODE2VEC
+        q = Q_NODE2VEC
 
     graph_node2vec = node2vec.Graph(graph, is_directed=graph.is_directed(), p=p, q=q)
     graph_node2vec.preprocess_transition_probs()
