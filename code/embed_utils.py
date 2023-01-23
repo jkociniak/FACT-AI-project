@@ -1,25 +1,22 @@
 import numpy as np
-import random
 from os import listdir
 from os.path import splitext
 import networkx as nx
 from gensim.models import Word2Vec
-import node2vec
-
-# import deepwalk
 
 # pip install pybind11
 # pip install graph-walker
 import walker
 
 
-CLASS = "class"
+CLASS_NAME = "class"
 DEFAULT_WEIGHT = 1
 SEED = 0
 P_NODE2VEC = 0.5
 Q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
-WALKS_HYPER = {"num_walks": 10, "walk_length": 80}
+# WALKS_HYPER = {"num_walks": 10, "walk_length": 80}
+WALKS_HYPER = {"n_walks": 10, "walk_len": 80}
 SHARED_WORD2VEC_HYPER = {
     "vector_size": 128,
     "workers": 8,
@@ -70,7 +67,7 @@ def data2graph(dataset: str):
 
     with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
         attr = [
-            (int(i), {CLASS: int(c)})
+            (int(i), {CLASS_NAME: int(c)})
             for node in f_attr.read().strip().split("\n")
             for i, c in [node.split()]
         ]
@@ -90,10 +87,11 @@ def data2graph(dataset: str):
     return graph
 
 
-def estimate_proximity(graph, node: int, class_node, r: int, d: int):
+def estimate_proximity(graph, node: int, class_node, r=10, d=80):
     """
     Estimates a measure of proximity of a node to other groups in the graph
     In the paper also known as m()
+    TODO what values to use for r and d in estimate_proximity()?
     """
     walks = walker.random_walks(
         graph, n_walks=r, walk_len=d, start_nodes=[node], verbose=False
@@ -109,7 +107,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     by preprocess_transition_probs() anyway
     """
     d_graph = graph.to_directed()
-    node2class = nx.get_node_attributes(d_graph, CLASS)
+    node2class = nx.get_node_attributes(d_graph, CLASS_NAME)
     classes = np.unique(list(node2class.values()))
 
     if reweight_method == "fairwalk":
@@ -132,10 +130,9 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
-        # TODO what values to use for r and d in estimate_proximity()?
         # Probably faster if compute all at ones by passing all nodes to start_nodes and then restructuring the list
         proximities = [
-            estimate_proximity(graph, node, node2class[node], 10, 10)
+            estimate_proximity(graph, node, node2class[node])
             for node in d_graph.nodes()
         ]
 
@@ -194,32 +191,19 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
     kwargs_word2vec = SHARED_WORD2VEC_HYPER.copy()
 
     if embed_method == "deepwalk":
-        # kwargs_word2vec = SHARED_WORD2VEC_HYPER | DEEPWALK_WORD2VEC_HYPER
-        # graph_deepwalk = deepwalk.from_networkx(graph)
-        # walks = deepwalk.build_deepwalk_corpus(
-        #     graph_deepwalk,
-        #     num_paths=WALKS_HYPER["num_walks"],
-        #     path_length=WALKS_HYPER["walk_length"],
-        #     rand=random.Random(SEED),
-        # )
         kwargs_word2vec.update(DEEPWALK_WORD2VEC_HYPER)
         p = 1
         q = 1
     elif embed_method == "node2vec":
-        # graph_node2vec = node2vec.Graph(
-        #     graph, is_directed=graph.is_directed(), **NODE2VEC_HYPER
-        # )
-        # graph_node2vec.preprocess_transition_probs()
-        # walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
-        # walks = [list(map(str, walk)) for walk in walks]
         kwargs_word2vec.update(NODE2VEC_WORD2VEC_HYPER)
         p = P_NODE2VEC
         q = Q_NODE2VEC
 
-    graph_node2vec = node2vec.Graph(graph, is_directed=graph.is_directed(), p=p, q=q)
-    graph_node2vec.preprocess_transition_probs()
-    walks = graph_node2vec.simulate_walks(**WALKS_HYPER)
+    # Generate random walks
+    walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
     walks = [list(map(str, walk)) for walk in walks]
+
+    # Generate embeddings
     model = Word2Vec(walks, **kwargs_word2vec)
     original_graph_indices = [
         model.wv.key_to_index[str(i)] for i in range(model.wv.__len__())
