@@ -42,7 +42,7 @@ def check_input_formatting(**kwargs):
             "synth3",
             "twitter",
             "stanford",
-        ], "dataset should be 'rice', 'synth_3layers', 'synth2', 'synth3' or 'twitter'"
+        ], "dataset should be 'rice', 'synth_3layers', 'synth2', 'synth3', 'twitter' or 'stanford'"
     if "reweight_method" in kwargs:
         assert kwargs["reweight_method"] in [
             "default",
@@ -63,6 +63,7 @@ def get_largest_connected_subgraph(graph):
 
 
 def data2graph(dataset: str):
+    check_input_formatting(dataset=dataset)
     path = f"../data/{dataset}/"
     extensions = [splitext(file_name)[1] for file_name in listdir(path)]
     path += splitext(listdir(path)[0])[0]
@@ -253,6 +254,7 @@ def save_embed(
     For now without pickle for possible compatability issues.
     """
     check_input_formatting(
+        dataset=dataset,
         reweight_method=reweight_method,
         embed_method=embed_method,
     )
@@ -265,6 +267,7 @@ def load_embed(dataset: str, reweight_method: str, embed_method: str):
     load an embedding.
     """
     check_input_formatting(
+        dataset=dataset,
         reweight_method=reweight_method,
         embed_method=embed_method,
     )
