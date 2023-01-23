@@ -8,7 +8,7 @@ import walker
 
 
 SENSATTR = "sensattr"
-LABEL_NAME = "class"
+CLASS_NAME = "class"
 DEFAULT_WEIGHT = 1
 SEED = 0
 P_NODE2VEC = 0.5
@@ -64,6 +64,7 @@ def get_largest_connected_subgraph(graph):
 
 def data2graph(dataset: str):
     path = f"../data/{dataset}/"
+    extensions = [splitext(file_name)[1] for file_name in listdir(path)]
     path += splitext(listdir(path)[0])[0]
 
     with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
@@ -81,6 +82,17 @@ def data2graph(dataset: str):
     graph = nx.Graph()
     graph.add_nodes_from(attr)
     graph.add_weighted_edges_from(links)
+
+    if ".class" in extensions:
+        with open(path + ".class") as f_class:
+            classes = {
+                int(i): {CLASS_NAME: int(c)}
+                for node in f_class.read().strip().split("\n")
+                for i, c in [node.split()]
+            }
+
+        nx.set_node_attributes(graph, classes)
+
     # for the twitter dataset only use the largest connected subgraph
     if dataset == "twitter":
         graph = get_largest_connected_subgraph(graph)
