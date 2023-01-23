@@ -7,7 +7,8 @@ from gensim.models import Word2Vec
 import walker
 
 
-CLASS_NAME = "class"
+SENSATTR = "sensattr"
+LABEL_NAME = "class"
 DEFAULT_WEIGHT = 1
 SEED = 0
 P_NODE2VEC = 0.5
@@ -40,6 +41,7 @@ def check_input_formatting(**kwargs):
             "synth2",
             "synth3",
             "twitter",
+            "stanford",
         ], "dataset should be 'rice', 'synth_3layers', 'synth2', 'synth3' or 'twitter'"
     if "reweight_method" in kwargs:
         assert kwargs["reweight_method"] in [
@@ -66,7 +68,7 @@ def data2graph(dataset: str):
 
     with open(path + ".attr") as f_attr, open(path + ".links") as f_links:
         attr = [
-            (int(i), {CLASS_NAME: int(c)})
+            (int(i), {SENSATTR: int(c)})
             for node in f_attr.read().strip().split("\n")
             for i, c in [node.split()]
         ]
@@ -95,7 +97,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     """
     # Initiate new directed graph to store the new weights
     d_graph = graph.to_directed()
-    node2class = nx.get_node_attributes(d_graph, CLASS_NAME)
+    node2class = nx.get_node_attributes(d_graph, SENSATTR)
 
     if reweight_method == "fairwalk":
         for node in d_graph.nodes():
