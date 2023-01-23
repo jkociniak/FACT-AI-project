@@ -4,9 +4,6 @@ from os import listdir
 from os.path import splitext
 import networkx as nx
 from gensim.models import Word2Vec
-
-# pip install pybind11
-# pip install graph-walker
 import walker
 
 
@@ -16,6 +13,8 @@ SEED = 0
 P_NODE2VEC = 0.5
 Q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
+R = 10
+D = 80
 WALKS_HYPER = {"n_walks": 10, "walk_len": 80}
 SHARED_WORD2VEC_HYPER = {
     "vector_size": 128,
@@ -94,10 +93,18 @@ def estimate_proximity(graph, node: int, class_node, r=10, d=80):
     TODO what values to use for r and d in estimate_proximity()?
     """
     walks = walker.random_walks(
-        graph, n_walks=r, walk_len=d, start_nodes=[node], verbose=False
+        G, n_walks=r, walk_len=d, start_nodes=G.nodes, verbose=False
     )
-    proximity = np.count_nonzero(walks != class_node) / (r * d)
-    return proximity
+    n_nodes = G.number_of_nodes()
+    total_walks = walks.shape[0]
+    denominator = r * d
+    proximity = [
+        np.count_nonzero(
+            walks[np.arange(node, total_walks, n_nodes)] != node2class[node]
+        )
+        / denominator
+        for node in G.nodes
+    ]
 
 
 def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
@@ -105,6 +112,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     reweight edge weights using either fairwalk or crosswalk
     Note that this does not normalize the weights, as that is done later in graph2embed
     by preprocess_transition_probs() anyway
+    TODO allow alpha and p to be input
     """
     # Initiate new directed graph to store the new weights
     d_graph = graph.to_directed()
@@ -130,10 +138,22 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
-        # TODO Probably faster if compute all at ones by passing all nodes to start_nodes and then restructuring the list
+        # Estimate a measure of proximity (m) for each node to other groups in the graph
+        # Generate the walks to estimate m for all nodes at ones - this is much faster
+        walks = walker.random_walks(
+            d_graph, n_walks=R, walk_len=D, start_nodes=d_graph.nodes, verbose=False
+        )
+        # Precompute factors that are in the list comprehension
+        n_nodes = d_graph.number_of_nodes()
+        total_walks = walks.shape[0]
+        denominator = R * D
+        # Compute proximity for each batch of walks with the same starting node
         proximities = [
-            estimate_proximity(graph, node, node2class[node])
-            for node in d_graph.nodes()
+            np.count_nonzero(
+                walks[np.arange(node, total_walks, n_nodes)] != node2class[node]
+            )
+            / denominator
+            for node in d_graph.nodes
         ]
 
         for node in d_graph.nodes():
