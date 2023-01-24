@@ -9,6 +9,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 
+from karateclub import DeepWalk
+
 """In the Rice-Facebook dataset with two groups of nodes, A
 and B, there exist three types of links; A to A, B to B, and A
 to B connections. Similarly, in the Twitter dataset with three
@@ -57,7 +59,7 @@ def get_train_links(G):
                 continue
             
             for i, pair in enumerate(label_pairs):
-                if G.nodes("class")[node1] == pair[0] and G.nodes("class")[node2] == pair[1]:
+                if G.nodes(embed_utils.SENSATTR)[node1] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2] == pair[1]:
                     label = i
 
             if (node1,node2) in connected_nodes or (node2, node1) in connected_nodes:
@@ -127,7 +129,7 @@ def get_node_labels(G):
     """
     Return list of different labels 
     """
-    nodes = list(G.nodes(data="class"))
+    nodes = list(G.nodes(data=embed_utils.SENSATTR))
     distinct_labels = list(set([n[1] for n in nodes]))
     
     return distinct_labels
@@ -154,9 +156,7 @@ if __name__ == "__main__":
     ##################
     #####  Rice  #####
     ##################
-    
-    # Get embedding
-    # emb = load_embed("rice", "fairwalk", "singer")
+
     G = embed_utils.data2graph("rice")
     
     # Find the different class labels
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     for i, pair in enumerate(label_pairs):
         print(f"Group {i} is connection type {pair}")
 
-    # Create the train links
+    # Get all  links
     # For rice we have labels {0: link 0 to 0, 1: link 0 to 1, 1:link 1 to 1}
     all_links = get_train_links(G)
 
@@ -192,21 +192,23 @@ if __name__ == "__main__":
 
             # 
     
-    accuracy = {"accuracy per iteration": [], "disparity per iteration": []}
-
+    accuracy = {"accuracy per iteration": [], "accuracy per group": []}
+ 
     for iter in [str(k) for k in range(1,6)]:
         
         print('iter: ', iter)
-
         train, test = get_train_test_positive_only(G, all_links)
         train_all = add_negative_links(G, train)
         
         test_all = add_negative_links(G, test)
 
         new_G = nx.Graph()
-        new_G.add_nodes_from(G, attr='class')
+        new_G.add_nodes_from(G)
 
-        emb = embed_utils.load_embed("rice", "default", "node2vec")# embed_utils.graph2embed(new_G, "default", 'fairwalk')
+        model = DeepWalk()
+        model.fit(new_G)
+        emb = model.get_embedding()
+        # emb = embed_utils.graph2embed(new_G, "default", 'deepwalk')
 
         clf = LogisticRegression(solver='lbfgs')
 
@@ -223,7 +225,7 @@ if __name__ == "__main__":
         clf.fit(x_train, y_train)
         
         y_pred = clf.predict(x_test)
-        old = y_pred.copy()
+        
         accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
         
         accuracy_iter = []
@@ -247,15 +249,8 @@ if __name__ == "__main__":
         
         accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
         accuracy["disparity"] = np.var(disparity_list)
-        accuracy["disparity per iteration"].append(accuracy_iter)
+        accuracy["accuracy per group"].append(accuracy_iter)
 
-    print(accuracy)
-    print()
-
-    accuracy["mean accuracy"] = np.mean(accuracy["accuracy per iteration"])
-    accuracy["standard deviation"] = np.std(accuracy["accuracy per iteration"])
-
-
-
-
-
+        print("iteration:", iter, "\n", accuracy)
+        
+        print()
