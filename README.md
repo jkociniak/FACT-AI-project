@@ -1,6 +1,10 @@
 # FACT-AI-project
 Paper reproduction for FACT-AI course at UvA.
 
+To install `walker', run:
+pip install pybind11
+pip install graph-walker
+
 ## Environment setup (Mac M1)
 
 ```
