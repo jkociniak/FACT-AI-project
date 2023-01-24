@@ -1,9 +1,9 @@
 import numpy as np
 import numpy.ma as ma
-
+import networkx as nx
 from tqdm import tqdm
 
-from embed_utils import *
+import embed_utils
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -70,7 +70,6 @@ def get_train_links(G):
 
     return train_links
 
-
 def get_train_test(G, links_group):
     """
     Get the train and test split 
@@ -88,13 +87,39 @@ def get_train_test(G, links_group):
     for group in range(len(label_pairs)):
         # Split 1:10 test:train per group
         pos_group_x = shuffle([d for d in pos_data if d[2] == group])
-        neg_group_x = shuffle([d for d in neg_data if d[2] == group])[:len(pos_group_x)]
+        neg_group_x = shuffle([d for d in neg_data if d[2] == group])
+
         pos_train, pos_test = train_test_split(pos_group_x, test_size=0.1)
         neg_train, neg_test = train_test_split(neg_group_x, test_size=0.1)
 
         # Add alle train and test data together
         train += pos_train + neg_train
         test += pos_test + shuffle(neg_test)[:len(pos_test)]
+
+    return shuffle(train), shuffle(test)
+
+def get_train_test_positive_only(G, links_group):
+    """
+    Get the train and test split 
+    Returns two list of tuples, same format as get_train_links
+    [(node1, node2, label, connected_bool)]
+    """
+    pos_data = [link for link in links_group if link[3]]
+
+    label_pairs = get_label_pairs(G)
+
+    train = []
+    test = []
+
+    for group in range(len(label_pairs)):
+        # Split 1:10 test:train per group
+        pos_group_x = shuffle([d for d in pos_data if d[2] == group])
+
+        pos_train, pos_test = train_test_split(pos_group_x, test_size=0.1)
+
+        # Add alle train and test data together
+        train += pos_train 
+        test += pos_test
 
     return shuffle(train), shuffle(test)
     
@@ -111,6 +136,18 @@ def extract_features(u,v):
     return (u-v)**2
     # return np.array([np.sqrt(np.sum((u-v)**2))])
 
+def add_negative_links(G, pos_links):
+    """
+    Get as many negative as positive links and add it to the training dataset
+    """
+    all_links = get_train_links(G)
+    # Remove positive links and make the postive links from test set negative
+    neg_links = [link[:-1]+(0,) for link in all_links if link not in pos_links]
+    # Shuffle and acces as many negative as positive links
+    neg_links = shuffle(neg_links)[:len(pos_links)]
+
+    return shuffle(pos_links + neg_links)
+
 
 if __name__ == "__main__":
 
@@ -119,9 +156,9 @@ if __name__ == "__main__":
     ##################
     
     # Get embedding
-    emb = load_embed("rice", "fairwalk", "singer")
-    G = data2graph("rice")
-
+    # emb = load_embed("rice", "fairwalk", "singer")
+    G = embed_utils.data2graph("rice")
+    
     # Find the different class labels
     all_labels = get_node_labels(G)
 
@@ -133,7 +170,27 @@ if __name__ == "__main__":
 
     # Create the train links
     # For rice we have labels {0: link 0 to 0, 1: link 0 to 1, 1:link 1 to 1}
-    train_links = get_train_links(G)
+    all_links = get_train_links(G)
+
+    # For every iteration
+        # Verdeel in de classes
+
+        # For every class get 90% of links as train
+        # Divide in 10 percent test and 90 percent train
+        # We take this together back as one graph
+        
+        # TRAIN:
+        # Now we can also get all negative links that are not in train and keep seperate
+        # We do this most efficient by just sampling random points and checking if it is not a positive link 
+        # For the length of the positive links.
+        
+        # From training data links get graph embedding
+
+            # Extract features for every link in training but remember the label for y_
+        
+        # TEST:
+
+            # 
     
     accuracy = {"accuracy per iteration": [], "disparity per iteration": []}
 
@@ -141,19 +198,27 @@ if __name__ == "__main__":
         
         print('iter: ', iter)
 
-        train, test = get_train_test(G, train_links)
+        train, test = get_train_test_positive_only(G, all_links)
+        train_all = add_negative_links(G, train)
+        
+        test_all = add_negative_links(G, test)
+
+        new_G = nx.Graph()
+        new_G.add_nodes_from(G, attr='class')
+
+        emb = embed_utils.load_embed("rice", "default", "node2vec")# embed_utils.graph2embed(new_G, "default", 'fairwalk')
 
         clf = LogisticRegression(solver='lbfgs')
 
-        x_train_group_indices = np.array([l[2] for l in train])
-        x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
+        x_train_group_indices = np.array([l[2] for l in train_all])
+        x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train_all])
     
-        y_train = np.array([l[3] for l in train])
+        y_train = np.array([l[3] for l in train_all])
 
-        x_test_group_indices = np.array([l[2] for l in test])
-        x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
+        x_test_group_indices = np.array([l[2] for l in test_all])
+        x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test_all])
         
-        y_test = np.array([l[3] for l in test])
+        y_test = np.array([l[3] for l in test_all])
 
         clf.fit(x_train, y_train)
         
@@ -161,21 +226,28 @@ if __name__ == "__main__":
         old = y_pred.copy()
         accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
         
-        disparity = []
+        accuracy_iter = []
+        accuracy_group_xs = 0.0
+        disparity_list = []
         # Make mask with False for indices to drop and True for indices of group to keep
         for group in range(len(label_pairs)):
             mask_test = ma.masked_not_equal(x_test_group_indices, group)
-            mask_train = ma.masked_not_equal(x_train_group_indices, group)
+            # mask_train = ma.masked_not_equal(x_train_group_indices, group)
 
             y_test_group_x = y_test[mask_test == group]
             y_pred_group_x = y_pred[mask_test == group]
 
-            x_test_group_x = x_train[mask_train == group]
+            x_test_group_x = x_test[mask_test == group]
            
-            disp_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
-            disparity.append((f"group: {group}", disp_group_x))
+            accuracy_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
+            accuracy_group_xs += accuracy_group_x * x_test_group_x.shape[0]
+            disparity_list.append(accuracy_group_x)
+            accuracy_iter.append((f"group: {group}", accuracy_group_x))
         
-        accuracy["disparity per iteration"].append(disparity)
+        
+        accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
+        accuracy["disparity"] = np.var(disparity_list)
+        accuracy["disparity per iteration"].append(accuracy_iter)
 
     print(accuracy)
     print()
