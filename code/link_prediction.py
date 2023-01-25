@@ -2,12 +2,13 @@ import numpy as np
 import numpy.ma as ma
 import networkx as nx
 from tqdm import tqdm
+import random as rd
 
 import embed_utils
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.utils import shuffle
+from sklearn.utils import shuffle, random
 
 from karateclub import DeepWalk
 
@@ -36,7 +37,7 @@ def get_label_pairs(G):
     
     return label_pairs
 
-def get_train_links(G):
+def get_positive_links(G):
     """
     Output: 
     List of tuples (node1, node2, label, connected_bool)
@@ -45,86 +46,90 @@ def get_train_links(G):
     label is the type of connection (e.g. for Rice we have 3 types: 0,0 1,1 or 1,0)
     connected_bool is a boolean that determines if the link is positive or negative (connected or unconnected nodes)
     """
-    all_labels = get_node_labels(G)
-    label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
+    label_pairs = get_label_pairs(G)
 
-    connected_nodes = G.edges
-    train_links = []
-    nodes = list(G.nodes)
-    
-    checked_nodes = []
-    for node1 in tqdm(nodes):
-        for node2 in nodes:
-            if node2 in checked_nodes or node1 == node2:
-                continue
-            
-            for i, pair in enumerate(label_pairs):
-                if G.nodes(embed_utils.SENSATTR)[node1] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2] == pair[1]:
+    positive_links = []
+    for link in tqdm(list(G.edges)):
+        for i, pair in enumerate(label_pairs):
+                if G.nodes(embed_utils.SENSATTR)[link[0]] == pair[0] and G.nodes(embed_utils.SENSATTR)[link[1]] == pair[1]:
                     label = i
+                elif G.nodes(embed_utils.SENSATTR)[link[1]] == pair[0] and G.nodes(embed_utils.SENSATTR)[link[0]] == pair[1]:
+                    label = i
+        
+        positive_links.append(link + (label, 1))
 
-            if (node1,node2) in connected_nodes or (node2, node1) in connected_nodes:
-                connected_bool = 1
-            else:
-                connected_bool = 0
+    positive_links_partitioned = []
+    for group in tqdm(range(len(label_pairs))):
+        # Isolate group data
+        positive_links_partitioned.append([d for d in positive_links if d[2] == group])
 
-            train_links.append((node1, node2, label, connected_bool))
-        checked_nodes.append(node1)
+    return positive_links_partitioned
 
-    return train_links
 
-def get_train_test(G, links_group):
-    """
-    Get the train and test split 
-    Returns two list of tuples, same format as get_train_links
-    [(node1, node2, label, connected_bool)]
-    """
-    pos_data = [link for link in links_group if link[3]]
-    neg_data = [link for link in links_group if not link[3]]
-
+def train_test_from_pos_links(G, pos_links_groups):
     label_pairs = get_label_pairs(G)
 
-    train = []
-    test = []
-
-    for group in range(len(label_pairs)):
+    train, test = [], []
+    
+    # Split the postive links in test and train per group and append together
+    for pos_group_x in pos_links_groups:
         # Split 1:10 test:train per group
-        pos_group_x = shuffle([d for d in pos_data if d[2] == group])
-        neg_group_x = shuffle([d for d in neg_data if d[2] == group])
-
-        pos_train, pos_test = train_test_split(pos_group_x, test_size=0.1)
-        neg_train, neg_test = train_test_split(neg_group_x, test_size=0.1)
-
+        pos_train, pos_test = train_test_split(shuffle(pos_group_x), test_size=0.1)
         # Add alle train and test data together
-        train += pos_train + neg_train
-        test += pos_test + shuffle(neg_test)[:len(pos_test)]
-
-    return shuffle(train), shuffle(test)
-
-def get_train_test_positive_only(G, links_group):
-    """
-    Get the train and test split 
-    Returns two list of tuples, same format as get_train_links
-    [(node1, node2, label, connected_bool)]
-    """
-    pos_data = [link for link in links_group if link[3]]
-
-    label_pairs = get_label_pairs(G)
-
-    train = []
-    test = []
-
-    for group in range(len(label_pairs)):
-        # Split 1:10 test:train per group
-        pos_group_x = shuffle([d for d in pos_data if d[2] == group])
-
-        pos_train, pos_test = train_test_split(pos_group_x, test_size=0.1)
-
-        # Add alle train and test data together
-        train += pos_train 
+        train += pos_train
         test += pos_test
 
+    n = G.number_of_nodes()
+    # Keep track of links we don't want as negative train and test samples
+    checked_links = [(link[0], link[1]) for link in train] + [(link[1], link[0]) for link in train]
+
+    # Get negative samples for train data
+    for _ in tqdm(range(len(train))):
+        not_valid = True
+        # Get negative links
+        while not_valid:
+            # Randomly sample negative links
+            node1_ix = rd.randint(0, n-1)
+            node2_ix = rd.randint(0, n-1)
+            if (node2_ix, node1_ix) in checked_links or (node1_ix, node2_ix) in checked_links or node1_ix == node2_ix:
+                continue
+            not_valid = False
+        # Get the correct label
+        for i, pair in enumerate(label_pairs):
+            if G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[1]:
+                label = i
+            elif G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[1] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[0]:
+                label = i
+
+        train.append((node1_ix, node2_ix, label ,0))
+        checked_links.append((node1_ix, node2_ix))
+
+    # For the test data we cannot sample from test data itself
+    checked_links+= [(link[0], link[1]) for link in test]
+    # Get negative samples for test data
+    for _ in tqdm(range(len(test))):
+        not_valid = True
+        # Get negative links
+        while not_valid:
+            # Randomly sample negative links
+            node1_ix = rd.randint(0, n-1)
+            node2_ix = rd.randint(0, n-1)
+            if (node2_ix, node1_ix) in checked_links or (node1_ix, node2_ix) in checked_links or node1_ix == node2_ix:
+                continue
+            not_valid = False
+        # Get the correct label
+        for i, pair in enumerate(label_pairs):
+            if G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[1]:
+                label = i
+            elif G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[1] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[0]:
+                label = i
+
+        train.append((node1_ix, node2_ix, label ,0))
+        checked_links.append((node1_ix, node2_ix))
+        
     return shuffle(train), shuffle(test)
-    
+
+   
 def get_node_labels(G):
     """
     Return list of different labels 
@@ -138,119 +143,86 @@ def extract_features(u,v):
     return (u-v)**2
     # return np.array([np.sqrt(np.sum((u-v)**2))])
 
-def add_negative_links(G, pos_links):
-    """
-    Get as many negative as positive links and add it to the training dataset
-    """
-    all_links = get_train_links(G)
-    # Remove positive links and make the postive links from test set negative
-    neg_links = [link[:-1]+(0,) for link in all_links if link not in pos_links]
-    # Shuffle and acces as many negative as positive links
-    neg_links = shuffle(neg_links)[:len(pos_links)]
-
-    return shuffle(pos_links + neg_links)
-
 
 if __name__ == "__main__":
+    datasets = ["rice", "twitter"]
+    for dataset in datasets:
+        # Get graph
+        G = embed_utils.data2graph(dataset)
 
-    ##################
-    #####  Rice  #####
-    ##################
-
-    G = embed_utils.data2graph("rice")
-    
-    # Find the different class labels
-    all_labels = get_node_labels(G)
-
-    # Print the different type of connection groups
-    label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
-    print(f"We have {len(label_pairs)} groups where")
-    for i, pair in enumerate(label_pairs):
-        print(f"Group {i} is connection type {pair}")
-
-    # Get all  links
-    # For rice we have labels {0: link 0 to 0, 1: link 0 to 1, 1:link 1 to 1}
-    all_links = get_train_links(G)
-
-    # For every iteration
-        # Verdeel in de classes
-
-        # For every class get 90% of links as train
-        # Divide in 10 percent test and 90 percent train
-        # We take this together back as one graph
+        # LOG: Find the different class labels
+        all_labels = get_node_labels(G)
+        # LOG: Print the different type of connection groups
+        label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
+        print(f"For {dataset} dataset, we have {len(label_pairs)} groups where")
+        for i, pair in enumerate(label_pairs):
+            print(f"Group {i} is connection type {pair}")
         
-        # TRAIN:
-        # Now we can also get all negative links that are not in train and keep seperate
-        # We do this most efficient by just sampling random points and checking if it is not a positive link 
-        # For the length of the positive links.
+        # Extract all positive links as list of positive links per group
+        pos_links = get_positive_links(G)
         
-        # From training data links get graph embedding
+        accuracy = {"accuracy per iteration": [], "accuracy per group": []}
+        # Train and test
+        for iter in [str(k) for k in range(1,6)]:
+            print('iter: ', iter)
+            
+            # Split in train and test
+            train, test = train_test_from_pos_links(G, pos_links)
 
-            # Extract features for every link in training but remember the label for y_
+            pos_train_links = [(link[0], link[1]) for link in train if link[3]]
+            
+            new_G = G.copy()
+            new_G.remove_edges_from(G.edges())
+            # Add train edges
+            new_G.add_edges_from(pos_train_links, weight=1)
+
+            # emb = embed_utils.graph2embed(new_G, "default", 'deepwalk')
+            model = DeepWalk()
+            model.fit(new_G)
+            emb = model.get_embedding()
+
+            clf = LogisticRegression(solver='lbfgs')
+
+            x_train_group_indices = np.array([l[2] for l in train])
+            x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
         
-        # TEST:
+            y_train = np.array([l[3] for l in train])
 
-            # 
-    
-    accuracy = {"accuracy per iteration": [], "accuracy per group": []}
- 
-    for iter in [str(k) for k in range(1,6)]:
-        
-        print('iter: ', iter)
-        train, test = get_train_test_positive_only(G, all_links)
-        train_all = add_negative_links(G, train)
-        
-        test_all = add_negative_links(G, test)
+            x_test_group_indices = np.array([l[2] for l in test])
+            x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
+            
+            y_test = np.array([l[3] for l in test])
 
-        new_G = nx.Graph()
-        new_G.add_nodes_from(G)
+            clf.fit(x_train, y_train)
+            
+            y_pred = clf.predict(x_test)
+            
+            accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
+            
+            accuracy_iter = []
+            accuracy_group_xs = 0.0
+            disparity_list = []
+            accuracy["accuracy per group"] = []
+            # Make mask with False for indices to drop and True for indices of group to keep
+            for group in range(len(label_pairs)):
+                mask_test = ma.masked_not_equal(x_test_group_indices, group)
+                # mask_train = ma.masked_not_equal(x_train_group_indices, group)
+                y_test_group_x = y_test[mask_test == group]
+                y_pred_group_x = y_pred[mask_test == group]
 
-        model = DeepWalk()
-        model.fit(new_G)
-        emb = model.get_embedding()
-        # emb = embed_utils.graph2embed(new_G, "default", 'deepwalk')
+                x_test_group_x = x_test[mask_test == group]
+                print(f"mask size is ", y_test_group_x.shape)
+            
+                accuracy_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
+                accuracy_group_xs += accuracy_group_x * x_test_group_x.shape[0]
+                disparity_list.append(accuracy_group_x)
+                accuracy_iter.append((f"group: {group}", accuracy_group_x))
+            
+            
+            accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
+            accuracy["disparity"] = np.var(disparity_list)
+            accuracy["accuracy per group"].append(accuracy_iter)
 
-        clf = LogisticRegression(solver='lbfgs')
-
-        x_train_group_indices = np.array([l[2] for l in train_all])
-        x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train_all])
-    
-        y_train = np.array([l[3] for l in train_all])
-
-        x_test_group_indices = np.array([l[2] for l in test_all])
-        x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test_all])
-        
-        y_test = np.array([l[3] for l in test_all])
-
-        clf.fit(x_train, y_train)
-        
-        y_pred = clf.predict(x_test)
-        
-        accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
-        
-        accuracy_iter = []
-        accuracy_group_xs = 0.0
-        disparity_list = []
-        # Make mask with False for indices to drop and True for indices of group to keep
-        for group in range(len(label_pairs)):
-            mask_test = ma.masked_not_equal(x_test_group_indices, group)
-            # mask_train = ma.masked_not_equal(x_train_group_indices, group)
-
-            y_test_group_x = y_test[mask_test == group]
-            y_pred_group_x = y_pred[mask_test == group]
-
-            x_test_group_x = x_test[mask_test == group]
-           
-            accuracy_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
-            accuracy_group_xs += accuracy_group_x * x_test_group_x.shape[0]
-            disparity_list.append(accuracy_group_x)
-            accuracy_iter.append((f"group: {group}", accuracy_group_x))
-        
-        
-        accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
-        accuracy["disparity"] = np.var(disparity_list)
-        accuracy["accuracy per group"].append(accuracy_iter)
-
-        print("iteration:", iter, "\n", accuracy)
-        
-        print()
+            print("iteration:", iter, "\n", accuracy)
+            
+            print()
