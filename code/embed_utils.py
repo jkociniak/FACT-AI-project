@@ -106,6 +106,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     reweight edge weights using either fairwalk or crosswalk
     Note that this does not normalize the weights, as that is done later in graph2embed
     by preprocess_transition_probs() anyway
+    This implementation of fairwalk only works for a graph with equal weights
     TODO allow alpha and p to be input
     """
     # Initiate new directed graph to store the new weights
@@ -119,7 +120,6 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 node2class[neighbor] for neighbor in d_graph.neighbors(node)
             ]
             n_per_class = Counter(classes_neighbors)
-            n_dif_classes = len(n_per_class)
 
             # Compute the new weights
             for neighbor in d_graph.neighbors(node):
