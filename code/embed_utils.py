@@ -14,8 +14,8 @@ SEED = 0
 P_NODE2VEC = 0.5
 Q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
-R = 10
-D = 80
+R = 1000
+D = 50
 WALKS_HYPER = {"n_walks": 10, "walk_len": 80}
 SHARED_WORD2VEC_HYPER = {
     "vector_size": 128,
@@ -106,6 +106,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     reweight edge weights using either fairwalk or crosswalk
     Note that this does not normalize the weights, as that is done later in graph2embed
     by preprocess_transition_probs() anyway
+    This implementation of fairwalk only works for a graph with equal weights
     TODO allow alpha and p to be input
     """
     # Initiate new directed graph to store the new weights
@@ -119,19 +120,16 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 node2class[neighbor] for neighbor in d_graph.neighbors(node)
             ]
             n_per_class = Counter(classes_neighbors)
-            n_dif_classes = len(n_per_class)
 
             # Compute the new weights
             for neighbor in d_graph.neighbors(node):
                 old_weight = graph[node][neighbor]["weight"]
-                new_weight = old_weight / (
-                    n_per_class[node2class[neighbor]] * n_dif_classes
-                )
+                new_weight = old_weight / n_per_class[node2class[neighbor]]
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
         # Estimate a measure of proximity (m) for each node to other groups in the graph
-        # Generate the walks to estimate m for all nodes at ones - this is much faster
+        # Generate the walks to estimate m for all nodes at onces - this is much faster
         walks = walker.random_walks(
             d_graph, n_walks=R, walk_len=D, start_nodes=d_graph.nodes, verbose=False
         )
@@ -140,13 +138,12 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
         total_walks = walks.shape[0]
         denominator = R * D
         # Compute proximity for each batch of walks with the same starting node
-        proximities = [
-            np.count_nonzero(
-                walks[np.arange(node, total_walks, n_nodes)] != node2class[node]
-            )
-            / denominator
-            for node in d_graph.nodes
-        ]
+        proximities = []
+        for node in d_graph.nodes:
+            prox = 0
+            for walk in walks[np.arange(node, total_walks, n_nodes)]:
+                prox += walk.tolist().count(node2class[node])
+            proximities.append(prox / denominator)
 
         for node in d_graph.nodes():
             # Split the neighbors based on whether they share the class of the source node
