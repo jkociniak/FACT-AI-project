@@ -71,6 +71,8 @@ def train_test_from_pos_links(G, pos_links_groups):
 
     train, test = [], []
     
+    train_groups = []
+    test_groups = []
     # Split the postive links in test and train per group and append together
     for pos_group_x in pos_links_groups:
         # Split 1:10 test:train per group
@@ -79,11 +81,16 @@ def train_test_from_pos_links(G, pos_links_groups):
         train += pos_train
         test += pos_test
 
+        train_groups.append(pos_train)
+        test_groups.append(pos_test)
+
     n = G.number_of_nodes()
     # Keep track of links we don't want as negative train and test samples
     checked_links = [(link[0], link[1]) for link in train] + [(link[1], link[0]) for link in train]
 
     # Get negative samples for train data
+    negative_per_group = [0 for _ in range(len(label_pairs))]
+    maxs_per_group = [len(group) for group in train_groups]
     for _ in tqdm(range(len(train))):
         not_valid = True
         # Get negative links
@@ -93,20 +100,30 @@ def train_test_from_pos_links(G, pos_links_groups):
             node2_ix = rd.randint(0, n-1)
             if (node2_ix, node1_ix) in checked_links or (node1_ix, node2_ix) in checked_links or node1_ix == node2_ix:
                 continue
-            not_valid = False
-        # Get the correct label
-        for i, pair in enumerate(label_pairs):
-            if G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[1]:
-                label = i
-            elif G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[1] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[0]:
-                label = i
+            # Get the correct label
+            for i, pair in enumerate(label_pairs):
+                if G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[1]:
+                    label = i
+                elif G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[1] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[0]:
+                    label = i
 
-        train.append((node1_ix, node2_ix, label ,0))
-        checked_links.append((node1_ix, node2_ix))
+            # Append negative per corresponding group if not already maximum is achieved
+            for group_name, (group_i, max_per_group) in enumerate(zip(negative_per_group, maxs_per_group)):
+                if label == group_name:
+                    if group_i < max_per_group:
+                        train.append((node1_ix, node2_ix, label ,0))
+                        checked_links.append((node1_ix, node2_ix))
+
+                        maxs_per_group[group_name] += 1
+                        not_valid = False
+
 
     # For the test data we cannot sample from test data itself
     checked_links+= [(link[0], link[1]) for link in test]
+    
     # Get negative samples for test data
+    negative_per_group = [0 for _ in range(len(label_pairs))]
+    maxs_per_group = [len(group) for group in test_groups]
     for _ in tqdm(range(len(test))):
         not_valid = True
         # Get negative links
@@ -116,16 +133,21 @@ def train_test_from_pos_links(G, pos_links_groups):
             node2_ix = rd.randint(0, n-1)
             if (node2_ix, node1_ix) in checked_links or (node1_ix, node2_ix) in checked_links or node1_ix == node2_ix:
                 continue
-            not_valid = False
-        # Get the correct label
-        for i, pair in enumerate(label_pairs):
-            if G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[1]:
-                label = i
-            elif G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[1] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[0]:
-                label = i
+            # Get the correct label
+            for i, pair in enumerate(label_pairs):
+                if G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[0] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[1]:
+                    label = i
+                elif G.nodes(embed_utils.SENSATTR)[node1_ix] == pair[1] and G.nodes(embed_utils.SENSATTR)[node2_ix] == pair[0]:
+                    label = i
+                # Append negative per corresponding group if not already maximum is achieved
+                for group_name, (group_i, max_per_group) in enumerate(zip(negative_per_group, maxs_per_group)):
+                    if label == group_name:
+                        if group_i < max_per_group:
+                            test.append((node1_ix, node2_ix, label ,0))
+                            checked_links.append((node1_ix, node2_ix))
 
-        train.append((node1_ix, node2_ix, label ,0))
-        checked_links.append((node1_ix, node2_ix))
+                            maxs_per_group[group_name] += 1
+                            not_valid = False
         
     return shuffle(train), shuffle(test)
 
@@ -161,68 +183,88 @@ if __name__ == "__main__":
         # Extract all positive links as list of positive links per group
         pos_links = get_positive_links(G)
         
-        accuracy = {"accuracy per iteration": [], "accuracy per group": []}
-        # Train and test
-        for iter in [str(k) for k in range(1,6)]:
-            print('iter: ', iter)
-            
-            # Split in train and test
-            train, test = train_test_from_pos_links(G, pos_links)
+        ratios = []
+        for (reweight_method, embed_method) in [("default", "deepwalk"), ("fairwalk", "deepwalk"), ("crosswalk", "deepwalk")]:
+            results = {"average weighted accuracy": [], "average disparity": []}
+            accuracy = {"accuracy per iteration": [], "accuracy per group": []}
+            # Train and test
+            for iter in [str(k) for k in range(1,6)]:
+                print('iter: ', iter)
+                
+                # Split in train and test
+                train, test = train_test_from_pos_links(G, pos_links)
 
-            pos_train_links = [(link[0], link[1]) for link in train if link[3]]
-            
-            new_G = G.copy()
-            new_G.remove_edges_from(G.edges())
-            # Add train edges
-            new_G.add_edges_from(pos_train_links, weight=1)
+                pos_train_links = [(link[0], link[1]) for link in train if link[3]]
+                
+                new_G = G.copy()
+                new_G.remove_edges_from(G.edges())
+                # Add train edges
+                new_G.add_edges_from(pos_train_links, weight=1)
 
-            # emb = embed_utils.graph2embed(new_G, "default", 'deepwalk')
-            model = DeepWalk()
-            model.fit(new_G)
-            emb = model.get_embedding()
+                emb = embed_utils.graph2embed(new_G, reweight_method, embed_method)
+                # model = DeepWalk()
+                # model.fit(new_G)
+                # emb = model.get_embedding()
 
-            clf = LogisticRegression(solver='lbfgs')
+                clf = LogisticRegression(solver='lbfgs')
 
-            x_train_group_indices = np.array([l[2] for l in train])
-            x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
-        
-            y_train = np.array([l[3] for l in train])
+                x_train_group_indices = np.array([l[2] for l in train])
+                x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
+            
+                y_train = np.array([l[3] for l in train])
 
-            x_test_group_indices = np.array([l[2] for l in test])
-            x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
-            
-            y_test = np.array([l[3] for l in test])
+                x_test_group_indices = np.array([l[2] for l in test])
+                x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
+                
+                y_test = np.array([l[3] for l in test])
 
-            clf.fit(x_train, y_train)
-            
-            y_pred = clf.predict(x_test)
-            
-            accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
-            
-            accuracy_iter = []
-            accuracy_group_xs = 0.0
-            disparity_list = []
-            accuracy["accuracy per group"] = []
-            # Make mask with False for indices to drop and True for indices of group to keep
-            for group in range(len(label_pairs)):
-                mask_test = ma.masked_not_equal(x_test_group_indices, group)
-                # mask_train = ma.masked_not_equal(x_train_group_indices, group)
-                y_test_group_x = y_test[mask_test == group]
-                y_pred_group_x = y_pred[mask_test == group]
+                clf.fit(x_train, y_train)
+                
+                y_pred = clf.predict(x_test)
+                
+                accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
+                
+                accuracy_iter = []
+                accuracy_group_xs = 0.0
+                disparity_list = []
+                accuracy["accuracy per group"] = []
+                # Make mask with False for indices to drop and True for indices of group to keep
+                for group in range(len(label_pairs)):
+                    mask_test = ma.masked_not_equal(x_test_group_indices, group)
+                    # mask_train = ma.masked_not_equal(x_train_group_indices, group)
+                    y_test_group_x = y_test[mask_test == group]
+                    y_pred_group_x = y_pred[mask_test == group]
 
-                x_test_group_x = x_test[mask_test == group]
-                print(f"mask size is ", y_test_group_x.shape)
-            
-                accuracy_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
-                accuracy_group_xs += accuracy_group_x * x_test_group_x.shape[0]
-                disparity_list.append(accuracy_group_x)
-                accuracy_iter.append((f"group: {group}", accuracy_group_x))
-            
-            
-            accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
-            accuracy["disparity"] = np.var(disparity_list)
-            accuracy["accuracy per group"].append(accuracy_iter)
+                    x_test_group_x = x_test[mask_test == group]
+                
+                    accuracy_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
+                    accuracy_group_xs += accuracy_group_x * x_test_group_x.shape[0]
+                    disparity_list.append(accuracy_group_x)
+                    accuracy_iter.append((f"group: {group}", accuracy_group_x))
+                
+                
+                accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
+                results["average weighted accuracy"].append(accuracy_group_xs / x_test.shape[0])
+                accuracy["disparity"] = np.var(disparity_list)
+                results["average disparity"].append(np.var(disparity_list))
+                accuracy["accuracy per group"].append(accuracy_iter)
 
-            print("iteration:", iter, "\n", accuracy)
+
+                print("iteration:", iter)
+                
+                print()
+            print("accuracy report:\n", accuracy)
+            print()
+            print(f"average weighted accuracy for {dataset}:\n      {np.mean(results['average weighted accuracy'])}")
+            print(f"variance for weighted accuracy for {dataset}:\n      {np.var(results['average weighted accuracy'])}")
+            print(f"average disparity for {dataset}:\n      {np.mean(results['average disparity'])}")
+            print(f"variance disparity for {dataset}:\n      {np.var(results['average disparity'])}")
+
+            print(f"For reweight method {reweight_method} and embed method {embed_method}\nRatio of accuracy/disparity is {np.mean(results['average disparity'])/np.mean(results['average weighted accuracy'])}")
             
+            acc = np.mean(results['average weighted accuracy'])
+            disp = np.mean(results['average disparity'])
+            print(f"\nVisual representation of accuracy/disparity ratio:")
+            print(f"Accuracy :{'#'*int(acc/(acc+disp)*50)}")
+            print(f"Disparity:{'#'*int(disp/(acc+disp)*50)}")
             print()
