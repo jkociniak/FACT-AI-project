@@ -124,9 +124,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
             # Compute the new weights
             for neighbor in d_graph.neighbors(node):
                 old_weight = graph[node][neighbor]["weight"]
-                new_weight = old_weight / (
-                    n_per_class[node2class[neighbor]] * n_dif_classes
-                )
+                new_weight = old_weight / n_per_class[node2class[neighbor]]
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
