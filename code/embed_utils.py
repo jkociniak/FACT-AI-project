@@ -5,12 +5,7 @@ from os.path import splitext
 import networkx as nx
 from gensim.models import Word2Vec
 import walker
-
-# determines whether to use random walks or breath first search to compute m/proximity
-PROX_RW = True
-
-# this should be practically infinite, but be compatible with sklearn.preprocessing.normalize as used in walker
-INF = 100000
+import random
 
 SENSATTR = "sensattr"
 CLASS_NAME = "class"
@@ -106,6 +101,68 @@ def data2graph(dataset: str):
     return graph
 
 
+def crosswalk_randomwalker_BFS(graph, n_walks=10, walk_len=80):
+    """
+    based on crosswalk in the original code
+    """
+    node2group = nx.get_node_attributes(graph, SENSATTR)
+    border_distance = defaultdict(lambda: np.inf)
+    for group in set(node2group.values()):
+        queue = [v for v in graph if node2group[v] == group]
+        head = 0
+        dis = {v: 0 for v in queue}
+        while head < len(queue):
+            cur = queue[head]
+            d_cur = dis[cur]
+            for u in graph[cur]:
+                if (node2group[u] != group) and (u not in dis):
+                    queue.append(u)
+                    dis[u] = d_cur + 1
+                    border_distance[u] = d_cur + 1
+            head += 1
+
+    rand = random.Random()
+    # I assume this is alpha
+    p_ch = 0.5
+    paths = []
+    for _ in range(n_walks):
+        for start in graph.nodes:
+            path = [start]
+            while len(path) < walk_len:
+                cur = path[-1]
+                if len(graph[cur]) > 0:
+                    if border_distance[cur] == 1:
+                        l_1 = [
+                            u for u in graph[cur] if node2group[u] == node2group[cur]
+                        ]
+                        l_2 = [
+                            u for u in graph[cur] if node2group[u] != node2group[cur]
+                        ]
+                    else:
+                        l_1 = [
+                            u
+                            for u in graph[cur]
+                            if border_distance[u] >= border_distance[cur]
+                        ]
+                        l_2 = [
+                            u
+                            for u in graph[cur]
+                            if border_distance[u] < border_distance[cur]
+                        ]
+                    if (len(l_1) == 0) or (len(l_2) == 0):
+                        choice = rand.choice(list(graph[cur].keys()))
+                        path.append(choice)
+                    else:
+                        if np.random.rand() < p_ch:
+                            path.append(rand.choice(l_2))
+                        else:
+                            path.append(rand.choice(l_1))
+                else:
+                    break
+            paths.append(path)
+    return paths
+
+
 def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     """
     reweight edge weights using either fairwalk or crosswalk
@@ -133,98 +190,78 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
-        if PROX_RW:
-            # This follows equation 3 and from the paper
-            # Estimate a measure of proximity (m) for each node to other groups in the graph
-            # Generate the walks to estimate m for all nodes at once
-            walks = walker.random_walks(
-                d_graph, n_walks=R, walk_len=D, start_nodes=d_graph.nodes, verbose=False
-            )
-            # Precompute factors that are in the list comprehension
-            n_nodes = d_graph.number_of_nodes()
-            total_walks = walks.shape[0]
-            denominator = R * D
-            # Compute proximity for each batch of walks with the same starting node
-            proximities = []
-            for node in d_graph.nodes:
-                proximity = 0
-                for walk in walks[np.arange(node, total_walks, n_nodes)]:
-                    proximity += walk.tolist().count(node2group[node])
-                proximities.append(proximity / denominator)
+        # This follows equation 3 and from the paper
+        # Estimate a measure of proximity (m) for each node to other groups in the graph
+        # Generate the walks to estimate m for all nodes at once
+        walks = walker.random_walks(
+            d_graph, n_walks=R, walk_len=D, start_nodes=d_graph.nodes, verbose=False
+        )
+        # Precompute factors that are in the list comprehension
+        n_nodes = d_graph.number_of_nodes()
+        total_walks = walks.shape[0]
+        denominator = R * D
+        # Compute proximity for each batch of walks with the same starting node
+        proximities = []
+        for node in d_graph.nodes:
+            proximity = 0
+            for walk in walks[np.arange(node, total_walks, n_nodes)]:
+                proximity += walk.tolist().count(node2group[node])
+            proximities.append(proximity / denominator)
 
-            for node in d_graph.nodes:
-                # Split the neighbors based on whether they share the group of the source node
-                neigbors_same_group = []
-                neigbors_diff_group = []
-                for neighbor in d_graph.neighbors(node):
-                    if node2group[node] == node2group[neighbor]:
-                        neigbors_same_group.append(neighbor)
-                    else:
-                        neigbors_diff_group.append(neighbor)
-                # Compute new weights from the source node to the neighbors of the same group
-                # First compute the shared denominator
-                neigbors_same_group_denominator = sum(
-                    [
-                        graph[node][neighbor]["weight"] * proximities[neighbor] ** p
-                        for neighbor in neigbors_same_group
-                    ]
-                )
-                # Now individually update all the weights
-                for neighbor in neigbors_same_group:
-                    try:
-                        old_weight = graph[node][neighbor]["weight"]
-                        new_weight = (
-                            old_weight
-                            * (1 - alpha)
-                            * proximities[neighbor] ** p
-                            / neigbors_same_group_denominator
-                        )
-                    except:
-                        print(old_weight)
-                        print(proximities[neighbor])
-                        print(neighbor)
-                        print(neigbors_same_group_denominator)
-                        print(proximities)
-                        1 / 0
-                    d_graph[node][neighbor]["weight"] = new_weight
-                # Compute new weights from the source node to the neighbors of a different group
-                # First compute the shared denominator
-                n_neigbors_diff_group = len(neigbors_diff_group)
-                neigbors_diff_group_denominator = sum(
-                    [
-                        n_neigbors_diff_group
-                        * graph[node][neighbor]["weight"]
-                        * proximities[neighbor] ** p
-                        for neighbor in neigbors_diff_group
-                    ]
-                )
-                # Now individually update all the weights
-                for neighbor in neigbors_diff_group:
+        for node in d_graph.nodes:
+            # Split the neighbors based on whether they share the group of the source node
+            neigbors_same_group = []
+            neigbors_diff_group = []
+            for neighbor in d_graph.neighbors(node):
+                if node2group[node] == node2group[neighbor]:
+                    neigbors_same_group.append(neighbor)
+                else:
+                    neigbors_diff_group.append(neighbor)
+            # Compute new weights from the source node to the neighbors of the same group
+            # First compute the shared denominator
+            neigbors_same_group_denominator = sum(
+                [
+                    graph[node][neighbor]["weight"] * proximities[neighbor] ** p
+                    for neighbor in neigbors_same_group
+                ]
+            )
+            # Now individually update all the weights
+            for neighbor in neigbors_same_group:
+                try:
                     old_weight = graph[node][neighbor]["weight"]
                     new_weight = (
                         old_weight
-                        * alpha
+                        * (1 - alpha)
                         * proximities[neighbor] ** p
-                        / neigbors_diff_group_denominator
+                        / neigbors_same_group_denominator
                     )
-                    d_graph[node][neighbor]["weight"] = new_weight
-        else:
-            # Follow the BFS based approach from the original code
-            proximities = defaultdict(lambda: INF)
-            for group in set(node2group.values()):
-                queue = [v for v in graph if node2group[v] == group]
-                head = 0
-                dis = {v: 0 for v in queue}
-                while head < len(queue):
-                    cur = queue[head]
-                    d_cur = dis[cur]
-                    for u in d_graph[cur]:
-                        if (node2group[u] != group) and (u not in dis):
-                            queue.append(u)
-                            dis[u] = d_cur + 1
-                            proximities[u] = d_cur + 1
-                    head += 1
-            # TODO not sure how to use these proximities to reweight
+                except:
+                    # TODO
+                    print(
+                        "Division by 0 problem... I think it occurance when we randomly remove edges and get disconnected components"
+                    )
+                d_graph[node][neighbor]["weight"] = new_weight
+            # Compute new weights from the source node to the neighbors of a different group
+            # First compute the shared denominator
+            n_neigbors_diff_group = len(neigbors_diff_group)
+            neigbors_diff_group_denominator = sum(
+                [
+                    n_neigbors_diff_group
+                    * graph[node][neighbor]["weight"]
+                    * proximities[neighbor] ** p
+                    for neighbor in neigbors_diff_group
+                ]
+            )
+            # Now individually update all the weights
+            for neighbor in neigbors_diff_group:
+                old_weight = graph[node][neighbor]["weight"]
+                new_weight = (
+                    old_weight
+                    * alpha
+                    * proximities[neighbor] ** p
+                    / neigbors_diff_group_denominator
+                )
+                d_graph[node][neighbor]["weight"] = new_weight
 
     return d_graph
 
@@ -234,7 +271,7 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         reweight_method=reweight_method,
         embed_method=embed_method,
     )
-    if reweight_method != "default":
+    if reweight_method != "default" and reweight_method != "crosswalk":
         graph = reweight_edges(graph, reweight_method)
     kwargs_word2vec = SHARED_WORD2VEC_HYPER.copy()
 
@@ -247,10 +284,12 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         p = P_NODE2VEC
         q = Q_NODE2VEC
 
-    # Generate random walks
-    walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
+    if reweight_method == "crosswalk":
+        walks = crosswalk_randomwalker_BFS(graph, **WALKS_HYPER)
+    else:
+        # Generate random walks
+        walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
     walks = [list(map(str, walk)) for walk in walks]
-
     # Generate embeddings
     model = Word2Vec(walks, **kwargs_word2vec)
     # Ensure that the indices stay consistent
