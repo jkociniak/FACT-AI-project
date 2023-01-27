@@ -1,5 +1,5 @@
 import numpy as np
-from collections import Counter
+from collections import Counter, defaultdict
 from os import listdir
 from os.path import splitext
 import networkx as nx
@@ -106,7 +106,6 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
     reweight edge weights using either fairwalk or crosswalk
     Note that this does not normalize the weights, as that is done later in graph2embed
     by preprocess_transition_probs() anyway
-    This implementation of fairwalk only works for a graph with equal weights
     TODO allow alpha and p to be input
     """
     # Initiate new directed graph to store the new weights
@@ -115,16 +114,17 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
 
     if reweight_method == "fairwalk":
         for node in d_graph.nodes():
-            # Collect class information of the neighbors
-            classes_neighbors = [
-                node2class[neighbor] for neighbor in d_graph.neighbors(node)
-            ]
-            n_per_class = Counter(classes_neighbors)
+            # Collect density for the classes of the neighbors
+            density_per_class = defaultdict(lambda: 0)
+            for neighbor in d_graph.neighbors(node):
+                density_per_class[node2class[neighbor]] += graph[node][neighbor][
+                    "weight"
+                ]
 
             # Compute the new weights
             for neighbor in d_graph.neighbors(node):
                 old_weight = graph[node][neighbor]["weight"]
-                new_weight = old_weight / n_per_class[node2class[neighbor]]
+                new_weight = old_weight / density_per_class[node2class[neighbor]]
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
