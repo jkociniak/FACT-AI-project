@@ -9,6 +9,9 @@ import walker
 # determines whether to use random walks or breath first search to compute m/proximity
 PROX_RW = False
 
+# this should be practically infinite, but be compatible with sklearn.preprocessing.normalize as used in walker
+INF = 10000
+
 SENSATTR = "sensattr"
 CLASS_NAME = "class"
 DEFAULT_WEIGHT = 1
@@ -150,7 +153,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
                 proximities.append(prox / denominator)
         else:
             # Follow the BFS based approach from the original code
-            proximities = defaultdict(lambda: np.inf)
+            proximities = defaultdict(lambda: INF)
             for group in set(node2group.values()):
                 queue = [v for v in graph if node2group[v] == group]
                 head = 0
