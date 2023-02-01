@@ -287,7 +287,7 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         reweight_method=reweight_method,
         embed_method=embed_method,
     )
-    if reweight_method != "default":
+    if reweight_method != "default" and reweight_method != "crosswalk":
         graph = reweight_edges(graph, reweight_method)
     kwargs_word2vec = SHARED_WORD2VEC_HYPER.copy()
 
@@ -300,11 +300,11 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         p = P_NODE2VEC
         q = Q_NODE2VEC
 
-    # if reweight_method == "crosswalk":
-    #     walks = crosswalk_randomwalker_BFS(graph, **WALKS_HYPER)
-    # else:
-    # Generate random walks
-    walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
+    if reweight_method == "crosswalk":
+        walks = crosswalk_randomwalker_BFS(graph, **WALKS_HYPER)
+    else:
+        # Generate random walks
+        walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
     walks = [list(map(str, walk)) for walk in walks]
     # Generate embeddings
     model = Word2Vec(walks, **kwargs_word2vec)
