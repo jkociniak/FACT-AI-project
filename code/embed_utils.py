@@ -30,6 +30,22 @@ DEEPWALK_WORD2VEC_HYPER = {"hs": 1}
 NODE2VEC_WORD2VEC_HYPER = {"hs": 0}
 
 
+def create_rice_target_ds():
+    with open("../data/rice/rice_subset.attr") as f:
+        ids_subset = set([node.split()[0] for node in f.read().strip().split("\n")])
+
+    with open("../data/rice_raw/rice_raw.attr") as f:
+        target_subset = [
+            id + " " + target + "\n"
+            for node in f.read().strip().split("\n")
+            for id, target in [node.split()[:2]]
+            if id in ids_subset
+        ]
+
+    with open("../data/rice/rice_subset.target", "w") as f:
+        f.writelines(target_subset)
+
+
 def check_input_formatting(**kwargs):
     """
     Check that the input strings follow the correct naming conventions
@@ -84,8 +100,8 @@ def data2graph(dataset: str):
     graph.add_nodes_from(attr)
     graph.add_weighted_edges_from(links)
 
-    if ".class" in extensions:
-        with open(path + ".class") as f_class:
+    if ".target" in extensions:
+        with open(path + ".target") as f_class:
             classes = {
                 int(i): {CLASS_NAME: int(c)}
                 for node in f_class.read().strip().split("\n")

@@ -5,7 +5,6 @@ TODO integrate sensitive and target attribute distribution with the topology gen
 
 Useful literature for background:
 https://pdodds.w3.uvm.edu/files/papers/others/2002/newman2002a.pdf
-https://www.nature.com/articles/s41598-022-22843-4
 
 Useful literature for constructing synthetic graphs:
 https://www.worldscientific.com/doi/10.1142/S0218127408022536
@@ -16,6 +15,8 @@ Possible approaches:
 -configuration model
     -repeated configuration model
     -erased configuration model
+-We base or model on https://www.nature.com/articles/s41598-022-22843-4
+-And maybe we'll also use 
 
 """
 import numpy as np
