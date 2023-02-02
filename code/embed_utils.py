@@ -1,11 +1,11 @@
 import numpy as np
-from collections import Counter
+from collections import Counter, defaultdict
 from os import listdir
 from os.path import splitext
 import networkx as nx
 from gensim.models import Word2Vec
 import walker
-
+import random
 
 SENSATTR = "sensattr"
 CLASS_NAME = "class"
@@ -28,6 +28,22 @@ SHARED_WORD2VEC_HYPER = {
 DEEPWALK_WORD2VEC_HYPER = {"hs": 1}
 # sigmoid with negative sampling TODO add "negative": INT ?
 NODE2VEC_WORD2VEC_HYPER = {"hs": 0}
+
+
+def create_rice_target_ds():
+    with open("../data/rice/rice_subset.attr") as f:
+        ids_subset = set([node.split()[0] for node in f.read().strip().split("\n")])
+
+    with open("../data/rice_raw/rice_raw.attr") as f:
+        target_subset = [
+            id + " " + target + "\n"
+            for node in f.read().strip().split("\n")
+            for id, target in [node.split()[:2]]
+            if id in ids_subset
+        ]
+
+    with open("../data/rice/rice_subset.target", "w") as f:
+        f.writelines(target_subset)
 
 
 def check_input_formatting(**kwargs):
@@ -84,8 +100,8 @@ def data2graph(dataset: str):
     graph.add_nodes_from(attr)
     graph.add_weighted_edges_from(links)
 
-    if ".class" in extensions:
-        with open(path + ".class") as f_class:
+    if ".target" in extensions:
+        with open(path + ".target") as f_class:
             classes = {
                 int(i): {CLASS_NAME: int(c)}
                 for node in f_class.read().strip().split("\n")
@@ -106,30 +122,31 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=4):
     reweight edge weights using either fairwalk or crosswalk
     Note that this does not normalize the weights, as that is done later in graph2embed
     by preprocess_transition_probs() anyway
-    This implementation of fairwalk only works for a graph with equal weights
     TODO allow alpha and p to be input
     """
     # Initiate new directed graph to store the new weights
     d_graph = graph.to_directed()
-    node2class = nx.get_node_attributes(d_graph, SENSATTR)
+    node2group = nx.get_node_attributes(d_graph, SENSATTR)
 
     if reweight_method == "fairwalk":
-        for node in d_graph.nodes():
-            # Collect class information of the neighbors
-            classes_neighbors = [
-                node2class[neighbor] for neighbor in d_graph.neighbors(node)
-            ]
-            n_per_class = Counter(classes_neighbors)
+        for node in d_graph.nodes:
+            # Collect density for the groups of the neighbors
+            density_per_group = defaultdict(lambda: 0)
+            for neighbor in d_graph.neighbors(node):
+                density_per_group[node2group[neighbor]] += graph[node][neighbor][
+                    "weight"
+                ]
 
             # Compute the new weights
             for neighbor in d_graph.neighbors(node):
                 old_weight = graph[node][neighbor]["weight"]
-                new_weight = old_weight / n_per_class[node2class[neighbor]]
+                new_weight = old_weight / density_per_group[node2group[neighbor]]
                 d_graph[node][neighbor]["weight"] = new_weight
 
     elif reweight_method == "crosswalk":
+        # This follows equation 3 and from the paper
         # Estimate a measure of proximity (m) for each node to other groups in the graph
-        # Generate the walks to estimate m for all nodes at onces - this is much faster
+        # Generate the walks to estimate m for all nodes at once
         walks = walker.random_walks(
             d_graph, n_walks=R, walk_len=D, start_nodes=d_graph.nodes, verbose=False
         )
@@ -142,7 +159,7 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=4):
         # Compute proximity for each batch of walks with the same starting node
         proximities = []
         for node in d_graph.nodes:
-            prox = 0
+            proximity = 0
             for walk in walks[np.arange(node, total_walks, n_nodes)]:
                 prox += walk.tolist().count(node2class[node])
             proximities.append(prox / denominator + 0.00001)
@@ -208,7 +225,7 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         reweight_method=reweight_method,
         embed_method=embed_method,
     )
-    if reweight_method != "default":
+    if reweight_method != "default" and reweight_method != "crosswalk":
         graph = reweight_edges(graph, reweight_method)
     kwargs_word2vec = SHARED_WORD2VEC_HYPER.copy()
 
@@ -221,10 +238,12 @@ def graph2embed(graph, reweight_method: str, embed_method: str):
         p = P_NODE2VEC
         q = Q_NODE2VEC
 
-    # Generate random walks
-    walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
+    if reweight_method == "crosswalk":
+        walks = crosswalk_randomwalker_BFS(graph, **WALKS_HYPER)
+    else:
+        # Generate random walks
+        walks = walker.random_walks(graph, p=p, q=q, verbose=False, **WALKS_HYPER)
     walks = [list(map(str, walk)) for walk in walks]
-
     # Generate embeddings
     model = Word2Vec(walks, **kwargs_word2vec)
     # Ensure that the indices stay consistent
