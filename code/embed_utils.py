@@ -15,10 +15,10 @@ P_NODE2VEC = 0.5
 Q_NODE2VEC = 0.5
 # TODO not sure about the values of the hyperparameters below
 R = 1000
-D = 50
-WALKS_HYPER = {"n_walks": 10, "walk_len": 80}
+D = 5
+WALKS_HYPER = {"n_walks": 10, "walk_len": 40}
 SHARED_WORD2VEC_HYPER = {
-    "vector_size": 128,
+    "vector_size": 64,
     "workers": 8,
     "min_count": 0,
     "sg": 1,
@@ -101,7 +101,7 @@ def data2graph(dataset: str):
     return graph
 
 
-def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
+def reweight_edges(graph, reweight_method, alpha=0.5, p=4):
     """
     reweight edge weights using either fairwalk or crosswalk
     Note that this does not normalize the weights, as that is done later in graph2embed
@@ -133,66 +133,72 @@ def reweight_edges(graph, reweight_method, alpha=0.5, p=2):
         walks = walker.random_walks(
             d_graph, n_walks=R, walk_len=D, start_nodes=d_graph.nodes, verbose=False
         )
+
         # Precompute factors that are in the list comprehension
         n_nodes = d_graph.number_of_nodes()
         total_walks = walks.shape[0]
         denominator = R * D
+
         # Compute proximity for each batch of walks with the same starting node
         proximities = []
         for node in d_graph.nodes:
             prox = 0
             for walk in walks[np.arange(node, total_walks, n_nodes)]:
                 prox += walk.tolist().count(node2class[node])
-            proximities.append(prox / denominator)
+            proximities.append(prox / denominator + 0.00001)
 
+        # Compute the new weights
         for node in d_graph.nodes():
             # Split the neighbors based on whether they share the class of the source node
-            neigbors_same_class = []
-            neigbors_diff_class = []
+            neighbors_classes = Counter()
             for neighbor in d_graph.neighbors(node):
-                if node2class[node] == node2class[neighbor]:
-                    neigbors_same_class.append(neighbor)
-                else:
-                    neigbors_diff_class.append(neighbor)
-            # Compute new weights from the source node to the neighbors of the same class
-            # First compute the shared denominator
-            neigbors_same_class_denominator = sum(
-                [
+                neighbors_classes[node2class[neighbor]] += 1
+
+            if not neighbors_classes:
+                print('Node {} has no neighbors.'.format(node))
+                continue
+
+            if node2class[node] in neighbors_classes and len(neighbors_classes) == 1:
+                print('Node {} has no neighbors of a different class.'.format(node))
+                denominator = sum(
                     graph[node][neighbor]["weight"] * proximities[neighbor] ** p
-                    for neighbor in neigbors_same_class
-                ]
-            )
-            # Now individually update all the weights
-            for neighbor in neigbors_same_class:
-                old_weight = graph[node][neighbor]["weight"]
-                new_weight = (
-                    old_weight
-                    * (1 - alpha)
-                    * proximities[neighbor] ** p
-                    / neigbors_same_class_denominator
+                    for neighbor in d_graph.neighbors(node)
                 )
-                d_graph[node][neighbor]["weight"] = new_weight
-            # Compute new weights from the source node to the neighbors of a different class
-            # First compute the shared denominator
-            n_neigbors_diff_class = len(neigbors_diff_class)
-            neigbors_diff_class_denominator = sum(
-                [
-                    n_neigbors_diff_class
-                    * graph[node][neighbor]["weight"]
-                    * proximities[neighbor] ** p
-                    for neighbor in neigbors_diff_class
-                ]
-            )
-            # Now individually update all the weights
-            for neighbor in neigbors_diff_class:
-                old_weight = graph[node][neighbor]["weight"]
-                new_weight = (
-                    old_weight
-                    * alpha
-                    * proximities[neighbor] ** p
-                    / neigbors_diff_class_denominator
+                for neighbor in d_graph.neighbors(node):
+                    old_weight = graph[node][neighbor]["weight"]
+                    new_weight = (
+                        old_weight * proximities[neighbor] ** p  # we drop multiplication by (1-alpha) here bc we have only 1 group
+                        / denominator
+                    )
+                    d_graph[node][neighbor]["weight"] = new_weight
+                continue
+
+            for cls in neighbors_classes:
+                cls_neighbors = [u for u in d_graph.neighbors(node) if node2class[u] == cls]
+                denominator = sum(
+                    graph[node][neighbor]["weight"] * proximities[neighbor] ** p
+                    for neighbor in cls_neighbors
                 )
-                d_graph[node][neighbor]["weight"] = new_weight
+
+                # we excluded the situation where node has only neighbors of the same class
+                # so we have three more cases to consider
+                if cls == node2class[node]:  # neighbor of the same class, we multiply by (1-alpha) bc we are sure that we have at least one other group
+                    coeff = (1 - alpha)
+                else:
+                    if node2class[node] in neighbors_classes:  # neighbor of a different class
+                        coeff = alpha / (len(neighbors_classes) - 1)
+                    else:  # neighbor of a different class, but node has only neighbors of a different classes, so we don't need to multiply by alpha and subtract 1 from number of classes
+                        coeff = 1 / len(neighbors_classes)
+
+                for neighbor in cls_neighbors:
+                    old_weight = graph[node][neighbor]["weight"]
+                    new_weight = (
+                        old_weight
+                        * coeff
+                        * proximities[neighbor] ** p
+                        / denominator
+                    )
+                    d_graph[node][neighbor]["weight"] = new_weight
 
     return d_graph
 
