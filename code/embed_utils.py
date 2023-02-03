@@ -18,7 +18,7 @@ R = 1000
 D = 5
 WALKS_HYPER = {"n_walks": 10, "walk_len": 40}
 SHARED_WORD2VEC_HYPER = {
-    "vector_size": 64,
+    "vector_size": 32,
     "workers": 8,
     "min_count": 0,
     "sg": 1,
@@ -251,9 +251,9 @@ def reweight_crosswalk(graph, alpha=0.5, p=4):
                 d_graph[node][neighbor]["weight"] = new_weight
             continue
 
-        print(f'There is at least one neighbor of {node} in a different group than {node}.')
+        #print(f'There is at least one neighbor of {node} in a different group than {node}.')
         for group in neighbors_groups:
-            print(f'Processing neighbors of group {group}')
+            #print(f'Processing neighbors of group {group}')
             neighbors_in_group = [u for u in d_graph.neighbors(node) if node2group[u] == group]
             denominator = sum(
                 graph[node][neighbor]["weight"] * proximities[neighbor] ** p
