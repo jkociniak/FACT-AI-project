@@ -3,8 +3,6 @@ import numpy.ma as ma
 import networkx as nx
 from tqdm import tqdm
 import random as rd
-import os
-import json
 
 import embed_utils
 
@@ -36,12 +34,12 @@ def get_label_pairs(G):
     """
     all_labels = get_node_labels(G)
     label_pairs = [(all_labels[i], all_labels[j]) for i in range(len(all_labels)) for j in range(i, len(all_labels))]
-
+    
     return label_pairs
 
 def get_positive_links(G):
     """
-    Output:
+    Output: 
     List of tuples (node1, node2, label, connected_bool)
     node1 is the node where the link starts
     node2 is the node where the link ends
@@ -57,7 +55,7 @@ def get_positive_links(G):
                     label = i
                 elif G.nodes(embed_utils.SENSATTR)[link[1]] == pair[0] and G.nodes(embed_utils.SENSATTR)[link[0]] == pair[1]:
                     label = i
-
+        
         positive_links.append(link + (label, 1))
 
     positive_links_partitioned = []
@@ -72,7 +70,7 @@ def train_test_from_pos_links(G, pos_links_groups):
     label_pairs = get_label_pairs(G)
 
     train, test = [], []
-
+    
     train_groups = []
     test_groups = []
     # Split the postive links in test and train per group and append together
@@ -121,8 +119,8 @@ def train_test_from_pos_links(G, pos_links_groups):
 
 
     # For the test data we cannot sample from test data itself
-    checked_links+= [(link[0], link[1]) for link in test]
-
+    checked_links+= [(link[0], link[1]) for link in test] + [(link[1], link[0]) for link in test]
+    
     # Get negative samples for test data
     negative_per_group = [0 for _ in range(len(label_pairs))]
     maxs_per_group = [len(group) for group in test_groups]
@@ -150,17 +148,17 @@ def train_test_from_pos_links(G, pos_links_groups):
 
                             maxs_per_group[group_name] += 1
                             not_valid = False
-
+        
     return shuffle(train), shuffle(test)
 
-
+   
 def get_node_labels(G):
     """
-    Return list of different labels
+    Return list of different labels 
     """
     nodes = list(G.nodes(data=embed_utils.SENSATTR))
     distinct_labels = list(set([n[1] for n in nodes]))
-
+    
     return distinct_labels
 
 def extract_features(u,v):
@@ -170,7 +168,6 @@ def extract_features(u,v):
 
 if __name__ == "__main__":
     datasets = ["rice", "twitter"]
-    results_dir = '../results/link_prediction'
     for dataset in datasets:
         # Get graph
         G = embed_utils.data2graph(dataset)
@@ -182,36 +179,35 @@ if __name__ == "__main__":
         print(f"For {dataset} dataset, we have {len(label_pairs)} groups where")
         for i, pair in enumerate(label_pairs):
             print(f"Group {i} is connection type {pair}")
-
+        
         # Extract all positive links as list of positive links per group
         pos_links = get_positive_links(G)
-
+        
         ratios = []
-        embed_settings = [
-            ("default", "deepwalk", {}),
-            ("fairwalk", "deepwalk", {}),
-            ("crosswalk", "deepwalk", {'alpha': 0.5,
-                                       'p': 2})
-        ]
-
-        for reweight_method, embed_method, reweight_params in embed_settings:
+        list_accs_every_method = []
+        list_accs_min = []
+        list_accs_max = []
+        list_disp_every_method = []
+        list_disp_min = []
+        list_disp_max = []
+        for (reweight_method, embed_method) in [("default", "deepwalk"), ("fairwalk", "deepwalk"),("crosswalk", "deepwalk")]:
             results = {"average weighted accuracy": [], "average disparity": []}
             accuracy = {"accuracy per iteration": [], "accuracy per group": []}
             # Train and test
             for iter in [str(k) for k in range(1,6)]:
                 print('iter: ', iter)
-
+                
                 # Split in train and test
                 train, test = train_test_from_pos_links(G, pos_links)
 
                 pos_train_links = [(link[0], link[1]) for link in train if link[3]]
-
+                
                 new_G = G.copy()
                 new_G.remove_edges_from(G.edges())
                 # Add train edges
                 new_G.add_edges_from(pos_train_links, weight=1)
 
-                emb = embed_utils.graph2embed(new_G, reweight_method, embed_method, reweight_params)
+                emb = embed_utils.graph2embed(new_G, reweight_method, embed_method)
                 # model = DeepWalk()
                 # model.fit(new_G)
                 # emb = model.get_embedding()
@@ -220,20 +216,20 @@ if __name__ == "__main__":
 
                 x_train_group_indices = np.array([l[2] for l in train])
                 x_train = np.array([extract_features(emb[l[0]], emb[l[1]]) for l in train])
-
+            
                 y_train = np.array([l[3] for l in train])
 
                 x_test_group_indices = np.array([l[2] for l in test])
                 x_test = np.array([extract_features(np.array(emb[l[0]]), np.array(emb[l[1]])) for l in test])
-
+                
                 y_test = np.array([l[3] for l in test])
 
                 clf.fit(x_train, y_train)
-
+                
                 y_pred = clf.predict(x_test)
-
+                
                 accuracy["accuracy per iteration"].append(100 * np.sum(y_test == y_pred) / x_test.shape[0])
-
+                
                 accuracy_iter = []
                 accuracy_group_xs = 0.0
                 disparity_list = []
@@ -246,13 +242,13 @@ if __name__ == "__main__":
                     y_pred_group_x = y_pred[mask_test == group]
 
                     x_test_group_x = x_test[mask_test == group]
-
+                
                     accuracy_group_x = 100 * np.sum(y_test_group_x == y_pred_group_x) / x_test_group_x.shape[0]
                     accuracy_group_xs += accuracy_group_x * x_test_group_x.shape[0]
                     disparity_list.append(accuracy_group_x)
                     accuracy_iter.append((f"group: {group}", accuracy_group_x))
-
-
+                
+                
                 accuracy["weighted accuracy"] = accuracy_group_xs / x_test.shape[0]
                 results["average weighted accuracy"].append(accuracy_group_xs / x_test.shape[0])
                 accuracy["disparity"] = np.var(disparity_list)
@@ -261,7 +257,7 @@ if __name__ == "__main__":
 
 
                 print("iteration:", iter)
-
+                
                 print()
             print("accuracy report:\n", accuracy)
             print()
@@ -269,19 +265,25 @@ if __name__ == "__main__":
             print(f"variance for weighted accuracy for {dataset}:\n      {np.var(results['average weighted accuracy'])}")
             print(f"average disparity for {dataset}:\n      {np.mean(results['average disparity'])}")
             print(f"variance disparity for {dataset}:\n      {np.var(results['average disparity'])}")
-
+            print(f"minimal and maximal accuracy over all iterations.\nmin: {np.min(results['average weighted accuracy'])}\nmax: {np.max(results['average weighted accuracy'])}")
+            print(f"minimal and maximal disparity over all iterations.\nmin: {np.min(results['average disparity'])}\nmax: {np.max(results['average disparity'])}")
+            list_accs_min.append(np.min(results["average weighted accuracy"]))
+            list_accs_max.append(np.max(results["average weighted accuracy"]))
+            list_disp_min.append(np.min(results["average disparity"]))
+            list_disp_max.append(np.max(results["average disparity"]))
             print(f"For reweight method {reweight_method} and embed method {embed_method}\nRatio of accuracy/disparity is {np.mean(results['average disparity'])/np.mean(results['average weighted accuracy'])}")
-
+            
             acc = np.mean(results['average weighted accuracy'])
             disp = np.mean(results['average disparity'])
             print(f"\nVisual representation of accuracy/disparity ratio:")
             print(f"Accuracy :{'#'*int(acc/(acc+disp)*50)}")
             print(f"Disparity:{'#'*int(disp/(acc+disp)*50)}")
             print()
+        
+            list_accs_every_method.append(acc)
+            list_disp_every_method.append(disp)
 
-            results_final = {'accuracies': results['average weighted accuracy'],
-                             'disparities': results['average disparity']}
-            filename = f'{dataset}_{reweight_method}.json'
-            filepath = os.path.join(results_dir, filename)
-            with open(filepath, 'w') as file:
-                json.dump(results_final, file)
+        print(f"list of avg accuracies: {list_accs_every_method}\nlist of avg disparities: {list_disp_every_method}")
+        list_err_accs = [(mean-min, max-mean) for mean, min, max in zip(list_accs_every_method, list_accs_min, list_accs_max)]
+        list_err_disp = [(mean-min, max-mean) for mean, min, max in zip(list_disp_every_method, list_disp_min, list_disp_max)]
+        print(f"List of errors accuracies: {list_err_accs}\nList of errors disparities: {list_err_disp}")
