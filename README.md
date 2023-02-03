@@ -38,9 +38,9 @@ python setup.py install
 
 ### Extension
 - `generate_greedy_seeds.py` contains the code to generate synthetic graphs described in extension part of our reproduction study.
+- `generate_graph.py` contains code to generate graph with control over the assortativities. 
 
 ## Reproduction of influence maximization / link prediction experiments
 
-1. Use the file `influence_maximization.py` or `link_prediction.py` to generate the data for the experiments. Use the `save_dir` variable defined in the main function of the program to save your results in chosen directory.
-2. Use the corresponding notebook to generate the comparison plots using results from step 1. To do it, you just need to set the results directories in the second cell of the notebook.
-
+1. Use the file `influence_maximization.py`, `link_prediction.py` or `link_prediction_extension.py` to generate the data for the experiments. Use the `save_dir` variable defined in the main function of the program to save your results in chosen directory.
+2. Use the corresponding notebook to generate the comparison plots using results from step 1. To do it, you just need to set the results directories in the second cell of the notebook. Use the right function for the extension at the bottom. 
