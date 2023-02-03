@@ -73,12 +73,15 @@ def density(G):
 
 
 def gen_graph(N, diff, mode, D_within, n_edges_between_groups):
-    # N: number nodes per group
-    # Mode: 0 --> Assortative; Mode: 1 --> Disassortative
-    # If mode = 0:  diff = 0 highest assortative
-    # If mode = 1:  diff = 1.0 highest disassortative
-    # D_within: edge densities within the group. Length of this list also determines the number of groups
-    # n_edges_between_groups: number of edges between each group. Determines attribute assortativity
+    """
+    Use nx.degree_assortativity_coefficient(G) to get actual r
+    N: number nodes per group
+    Mode: 0 --> Assortative; Mode: 1 --> Disassortative
+    If mode = 0:  diff = 0 highest assortative
+    If mode = 1:  diff = 1.0 highest disassortative
+    D_within: edge densities within the group. Length of this list also determines the number of groups
+    n_edges_between_groups: number of edges between each group. Determines attribute assortativity
+    """
     groups = []
     for D in D_within:
         while True:
