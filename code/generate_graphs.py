@@ -16,6 +16,8 @@ import embed_utils
 import random
 import itertools
 
+rng = np.random.default_rng()
+
 
 # findK, gen and density are taken from https://github.com/almusawiaf2/Identifying-Accurate-Link-Predictors-based-on-Assortativity-of-Complex-Networks/blob/main/Code/assort3.py
 def findK(G, N, D, km):
@@ -100,7 +102,9 @@ def gen_graph(N, diff, mode, D_within, n_edges_between_groups):
         G = nx.compose(G, group)
         if i > 0:
             edges_between_groups = all_edges[
-                np.random.randint(0, all_edges.shape[0], n_edges_between_groups)
+                rng.choice(
+                    all_edges.shape[0], size=n_edges_between_groups, replace=False
+                )
             ]
             edges_between_groups += N * (i - 1)
             G.add_edges_from(edges_between_groups)
