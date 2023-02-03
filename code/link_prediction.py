@@ -119,7 +119,7 @@ def train_test_from_pos_links(G, pos_links_groups):
 
 
     # For the test data we cannot sample from test data itself
-    checked_links+= [(link[0], link[1]) for link in test]
+    checked_links+= [(link[0], link[1]) for link in test] + [(link[1], link[0]) for link in test]
     
     # Get negative samples for test data
     negative_per_group = [0 for _ in range(len(label_pairs))]
@@ -184,7 +184,13 @@ if __name__ == "__main__":
         pos_links = get_positive_links(G)
         
         ratios = []
-        for (reweight_method, embed_method) in [("default", "deepwalk"), ("fairwalk", "deepwalk"), ("crosswalk", "deepwalk")]:
+        list_accs_every_method = []
+        list_accs_min = []
+        list_accs_max = []
+        list_disp_every_method = []
+        list_disp_min = []
+        list_disp_max = []
+        for (reweight_method, embed_method) in [("default", "deepwalk"), ("fairwalk", "deepwalk"),("crosswalk", "deepwalk")]:
             results = {"average weighted accuracy": [], "average disparity": []}
             accuracy = {"accuracy per iteration": [], "accuracy per group": []}
             # Train and test
@@ -259,7 +265,12 @@ if __name__ == "__main__":
             print(f"variance for weighted accuracy for {dataset}:\n      {np.var(results['average weighted accuracy'])}")
             print(f"average disparity for {dataset}:\n      {np.mean(results['average disparity'])}")
             print(f"variance disparity for {dataset}:\n      {np.var(results['average disparity'])}")
-
+            print(f"minimal and maximal accuracy over all iterations.\nmin: {np.min(results['average weighted accuracy'])}\nmax: {np.max(results['average weighted accuracy'])}")
+            print(f"minimal and maximal disparity over all iterations.\nmin: {np.min(results['average disparity'])}\nmax: {np.max(results['average disparity'])}")
+            list_accs_min.append(np.min(results["average weighted accuracy"]))
+            list_accs_max.append(np.max(results["average weighted accuracy"]))
+            list_disp_min.append(np.min(results["average disparity"]))
+            list_disp_max.append(np.max(results["average disparity"]))
             print(f"For reweight method {reweight_method} and embed method {embed_method}\nRatio of accuracy/disparity is {np.mean(results['average disparity'])/np.mean(results['average weighted accuracy'])}")
             
             acc = np.mean(results['average weighted accuracy'])
@@ -268,3 +279,11 @@ if __name__ == "__main__":
             print(f"Accuracy :{'#'*int(acc/(acc+disp)*50)}")
             print(f"Disparity:{'#'*int(disp/(acc+disp)*50)}")
             print()
+        
+            list_accs_every_method.append(acc)
+            list_disp_every_method.append(disp)
+
+        print(f"list of avg accuracies: {list_accs_every_method}\nlist of avg disparities: {list_disp_every_method}")
+        list_err_accs = [(mean-min, max-mean) for mean, min, max in zip(list_accs_every_method, list_accs_min, list_accs_max)]
+        list_err_disp = [(mean-min, max-mean) for mean, min, max in zip(list_disp_every_method, list_disp_min, list_disp_max)]
+        print(f"List of errors accuracies: {list_err_accs}\nList of errors disparities: {list_err_disp}")
