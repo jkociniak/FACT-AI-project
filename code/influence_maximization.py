@@ -82,8 +82,10 @@ if __name__ == '__main__':
     # common settings
     infmax_params = {'n_experiments': 5, 'ic_sample_size': 500}
     activation_prob_attr = 'ic_activation_prob'
-    save_dir = '../results/influence_maximization/bigbatch'
-    embed_method = 'deepwalk'
+    save_dir = '../results/influence_maximization/bigbatch_d32_node2vec'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    embed_method = 'node2vec'
 
     # list of (dataset, activation_prob) tuples
     real_datasets = ['rice',
@@ -96,7 +98,7 @@ if __name__ == '__main__':
     # possible reweighing strategies
     reweight_methods = ['default', 'fairwalk', 'crosswalk']
 
-    repetitions = 100
+    repetitions = 10
 
     for dataset in synth_datasets + real_datasets:
         ap = 0.01 if dataset in real_datasets else 0.03
