@@ -3,6 +3,8 @@ import numpy.ma as ma
 import networkx as nx
 from tqdm import tqdm
 import random as rd
+import os
+import json
 
 import embed_utils
 
@@ -168,6 +170,7 @@ def extract_features(u,v):
 
 if __name__ == "__main__":
     datasets = ["rice", "twitter"]
+    results_dir = '../results/link_prediction'
     for dataset in datasets:
         # Get graph
         G = embed_utils.data2graph(dataset)
@@ -184,7 +187,14 @@ if __name__ == "__main__":
         pos_links = get_positive_links(G)
         
         ratios = []
-        for (reweight_method, embed_method) in [("default", "deepwalk"), ("fairwalk", "deepwalk"), ("crosswalk", "deepwalk")]:
+        embed_settings = [
+            ("default", "deepwalk", {}),
+            ("fairwalk", "deepwalk", {}),
+            ("crosswalk", "deepwalk", {'alpha': 0.5,
+                                       'p': 2})
+        ]
+
+        for reweight_method, embed_method, reweight_params in embed_settings:
             results = {"average weighted accuracy": [], "average disparity": []}
             accuracy = {"accuracy per iteration": [], "accuracy per group": []}
             # Train and test
@@ -201,7 +211,7 @@ if __name__ == "__main__":
                 # Add train edges
                 new_G.add_edges_from(pos_train_links, weight=1)
 
-                emb = embed_utils.graph2embed(new_G, reweight_method, embed_method)
+                emb = embed_utils.graph2embed(new_G, reweight_method, embed_method, reweight_params)
                 # model = DeepWalk()
                 # model.fit(new_G)
                 # emb = model.get_embedding()
@@ -268,3 +278,10 @@ if __name__ == "__main__":
             print(f"Accuracy :{'#'*int(acc/(acc+disp)*50)}")
             print(f"Disparity:{'#'*int(disp/(acc+disp)*50)}")
             print()
+
+            results_final = {'accuracies': results['average weighted accuracy'],
+                             'disparities': results['average disparity']}
+            filename = f'{dataset}_{reweight_method}.json'
+            filepath = os.path.join(results_dir, filename)
+            with open(filepath, 'w') as file:
+                json.dump(results_final, file)

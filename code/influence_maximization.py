@@ -82,7 +82,7 @@ if __name__ == '__main__':
     # common settings
     infmax_params = {'n_experiments': 5, 'ic_sample_size': 500}
     activation_prob_attr = 'ic_activation_prob'
-    save_dir = '../results/influence_maximization/bigbatch_d32_node2vec'
+    save_dir = '../results/influence_maximization/bigbatch_d64_node2vec'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     embed_method = 'node2vec'
@@ -103,6 +103,7 @@ if __name__ == '__main__':
     for dataset in synth_datasets + real_datasets:
         ap = 0.01 if dataset in real_datasets else 0.03
 
+        # commented out because we already have the greedy seeds and it is very slow to compute them again
         # greedy seeds
         # seed_params = {'seeds_dir': '../results/influence_maximization/greedy_seeds'}
         # run_experiment(dataset, ap, activation_prob_attr, 'load_greedy', seed_params, infmax_params, save_path)
